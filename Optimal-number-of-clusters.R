@@ -67,7 +67,7 @@ input_tree_or_matrix = "SOTUs-NJTree.tre"
 
 #' Please give the name of the mapping file which contains the labels of the samples
 #' !! CAUTION: The rows of the mapping file should have the same sample names as the OTUs table !!
-input_meta = "Mapping_File.tab"              #<--- CHANGE ACCORDINGLY !!!
+input_meta = "mapping_file.tab"              #<--- CHANGE ACCORDINGLY !!!
 
 
 #' Please provide the name or the number of the column (of the mapping file) based on which the samples will be partitioned into groups
@@ -87,9 +87,9 @@ Test_name =c("CD.3M","CD.B")
 
 
 
-##################################################################################
-######                  Additional parameters                               ######
-##################################################################################
+
+#-------------------- Additional parameters ----------------------#
+
 
 #' Turn on sample labeling
 #' 0 = Samples are not labeled in the MDS/NMDS plots
@@ -208,7 +208,7 @@ if ( file_ext(input_tree_or_matrix)=="nwk" | file_ext(input_tree_or_matrix)=="tr
 # Load the mapping file containing individual sample information (sample names in the first column)
 meta_file <- data.frame(read.table (file = input_meta, check.names = FALSE, header = TRUE, dec = ".", sep = "\t", row.names = 1, comment.char = ""))
 
-if (ncol(meta_file)==0 | nrow(meta_file==0)){
+if (ncol(meta_file)==0 | nrow(meta_file)==0){
   # Load the mapping file containing individual sample information (sample names in the first column)
   meta_file <- data.frame(read.table (file = input_meta, check.names = FALSE, header = TRUE, dec = ".", sep = ",", row.names = 1, comment.char = ""))
 }
@@ -235,6 +235,14 @@ meta_file[,mapping_column] <- as.factor(meta_file[,mapping_column])
 
 
 #------------------------ OTUs table--------------------------#
+
+# Load the tab-delimited file containing the values to be checked (row names in the first column)
+otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
+
+if (ncol(otu_table)==0 | nrow(otu_table)==0){
+  # Load the tab-delimited file containing the values to be checked (row names in the first column)
+  otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = ",", row.names = 1,comment.char = "")
+}
 
 
 # Load the tab-delimited file containing the values to be checked (row names in the first column)

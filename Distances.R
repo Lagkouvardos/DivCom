@@ -52,7 +52,7 @@ setwd("C:/...../..../Distances")  #<--- CHANGE ACCORDINGLY !!!
 
 
 #' Please give the name of the OTUs or ASVs table
-input_otu = "SOTUs-Table.tab" 
+input_otu = "OTUs-Table.tab" 
 
 
 #' Please insert "YES" if the OTUs/ASVs table is normalized otherwise, insert "NO"
@@ -69,7 +69,7 @@ tree_or_matrix =  "tree"
 
 #' Please insert the name of the distances matrix or the anme of the phylogenetic tree 
 #' -> -> !!! In case you will choose the "mean" or "median" option you HAVE TO provide a phylogenetic tree !!! <- <-
-input_tree_or_matrix= "SOTUs-NJTree.tre"  
+input_tree_or_matrix = "OTUs-NJTree.tre"  
 
 
 #' Please give the name of the mapping file which contains the labels of the samples
@@ -78,7 +78,7 @@ input_meta = "mapping_file.tab"
 
 
 #' Please provide the name or the number of the column (of the mapping file) based on which the samples will be partitioned into groups
-mapping_column = "Type4"
+mapping_column = "Condition"
 
 
 #' Please place in the vector one or more names which will be used to identify the samples that composing 
@@ -94,29 +94,27 @@ reference_clusters = 2
 
 #' Please provide the names of the test groups 
 #' There are two options: a User-defined vector or "None"
-#' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the groups (e.g test_name <- c("group_a","group_b"))         
-#' 2)     "None"          --> There won't be any test group. Only the distances of the reference samples will be calculated (Not recommended)
-Test_name = c("IBD.B","IBD.3M")
+#' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the groups (e.g test_name <- c("group_a","group_b"))
+#' 2)     "None" or c()   --> There won't be any test group. Only the distances of the reference samples will be calculated (Not recommended)
+Test_name = c("IBD")
 
 
 #' OPTIONAL-  Please insert the desired number of clusters for every test group (e.g test_clusters= c(3,2))
 #' -> -> !! CAUTION: The number of clusters should be more than one !! <- <-
 #' If you do not wish to perform de novo clustering to the test groups just insert an empty vector  (e.g test_clusters= c())
-test_clusters = c(3,3)
+test_clusters = c(5)
 
 
 #' OPTIONAL- Please insert the names of the columns of the mapping file you wish to analyze against the de novo clusters 
 #' -> -> !! CAUTION: The columns must contain categorical variables; if that is not the case, the analysis will NOT be conducted!! <- <- 
-exploratory_columns = c("Type5","Category","Iron")
+exploratory_columns = c("Iron_Time","Disease_Time_NI")
 
 
 #' OPTIONAL- Please choose if the medoid, mean or median points of every cluster will be used as the most central(representative) points
 #' There are three options: "medoid", "mean", "median"
 #' 1) Insert "medoid" if you you wish to use the medoids as the most representative points. !! DEFAULT OPTION !!
- 
 #' 2) Insert  "mean"  if you you wish to use the means as the most representative points.
 #'  -> -> !! WARNING: In this case you should provide the phylogenetic tree of the OTUs/ASVs sequences !! <- <-
-  
 #' 3) Insert "median" if you you wish the medians to be the most representative points.
 #'  -> -> !! WARNING: In this case you should provide the phylogenetic tree constructed of the OTUs/ASVs sequences !! <- <-
 central_point = "medoid" 
@@ -613,8 +611,13 @@ my_point_boxplot <- function(name,plot_df,label,abundance,colour=NULL){
 
 #------------------- Meta_file--------------------------#
 
-# Load the mapping file containing individual samples information (sample names should be in the first column of the file)
+# Load the mapping file containing individual sample information (sample names in the first column)
 meta_file <- data.frame(read.table (file = input_meta, check.names = FALSE, header = TRUE, dec = ".", sep = "\t", row.names = 1, comment.char = ""))
+
+if (ncol(meta_file)==0 | nrow(meta_file)==0){
+  # Load the mapping file containing individual sample information (sample names in the first column)
+  meta_file <- data.frame(read.table (file = input_meta, check.names = FALSE, header = TRUE, dec = ".", sep = ",", row.names = 1, comment.char = ""))
+}
 
 # Clean table from empty lines
 #meta_file <- data.frame(meta_file[!apply(is.na(meta_file) | meta_file=="",1,all),])
@@ -639,6 +642,13 @@ meta_file[,mapping_column] <- as.factor(meta_file[,mapping_column])
 
 
 #------------------------ OTUs table--------------------------#
+
+# Load the tab-delimited file containing the values to be checked (row names should be in the first column of the file)
+otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
+
+if (ncol(otu_table)==0 | nrow(otu_table)==0){
+  # Load the tab-delimited file containing the values to be checked (row names should be in the first column of the file)
+  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = ",", row.names = 1,comment.char = "")}
 
 # Load the tab-delimited file containing the values to be checked (row names should be in the first column of the file)
 otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
@@ -773,7 +783,7 @@ if (ncol(taxonomy)!=0) {
    #------------- Perform all the necessary checks ---------------# 
   
   # Check if has been provided the information about the desired number of clusters for the test groups
-  if (length(test_clusters) == 0 | Test_name == "None" | any(test_clusters == 1)) {test_clusters <- c()
+  if (length(test_clusters) == 0 | all(Test_name == "None") | any(test_clusters == 1)) {test_clusters <- c()
   index <- 1}
   
   
@@ -808,7 +818,7 @@ if (ncol(taxonomy)!=0) {
   #------- OTUs and mapping file preparation ---------#
   
   # OTUs table and mapping file transformation in order to include only the chosen by the user groups
-  if (Test_name == "None") {
+  if (all(Test_name == "None")) {
     levels <- c()
     otu_file <- rbind(otu_file[meta_file[,mapping_column] %in% reference_name,])
     meta_file <- meta_file[meta_file[,mapping_column] %in% reference_name,,drop=FALSE]
@@ -922,7 +932,7 @@ if (ncol(taxonomy)!=0) {
     # Each test group will we clustered into 1 cluster
     clusters <- ref_clusters
     # Selecting a medoid for every Test group
-    if (Test_name != "None") {
+    if (any(Test_name != "None")) {
       for (i in 1:length(levels)) {
         # If the test group has only element, this one will be used as the medoid. Otherwise pam clustering will be performed (1 cluster)
         if (length(which(meta_file[,mapping_column]==levels[i])) == 1) {
@@ -983,7 +993,7 @@ if (ncol(taxonomy)!=0) {
     # denovo_clusters -> vector with the clusters of the reference and test groups (de novo clustering has been performed to both the reference and test groups)
     denovo_clusters <- c()
     
-    if (Test_name != "None" & index == 0) { 
+    if (any(Test_name != "None") & index == 0) { 
       for (i in 1:length(levels)) {
         if (length(which(meta_file[,mapping_column] == levels[i])) > test_clusters[i]){
           # Perform de novo clustering for every test group
@@ -1005,7 +1015,7 @@ if (ncol(taxonomy)!=0) {
     }
     
     # Add in the cluster_centroid the mean or median points for every test cluster (that derived from the denovo clustering)
-    if (Test_name != "None" & index == 0) { 
+    if (any(Test_name != "None") & index == 0) { 
       for (i in 1:length(levels)) {
         if (central_point != "medoid"){
           for (j in 1:test_clusters[i]) { 
@@ -1114,7 +1124,7 @@ if (ncol(taxonomy)!=0) {
     }
     
     #########################################################################################################################################################
-    ############################################      Forming aucillary variables that will     ##############################################################
+    ############################################      Forming auxiliary variables that will     ##############################################################
     ############################################          be used in the following steps       ##############################################################
     #########################################################################################################################################################
     
@@ -1187,7 +1197,7 @@ if (ncol(taxonomy)!=0) {
     # Name the columns of the mapping file 
     colnames(mapping_file)[1] <- column_name
     # Create an extra column with the clusters derived from the de novo clustering of the reference ad test groups
-    if (index == 0 & Test_name != "None"){ 
+    if (index == 0 & any(Test_name != "None")){ 
       mapping_file <- cbind(column_name=denovo_clusters, mapping_file)
       colnames(mapping_file)[1] <- "De novo clusters"
     }
@@ -1222,7 +1232,7 @@ if (ncol(taxonomy)!=0) {
     self_pam <- pam(unifract_dist[meta_file[,mapping_column]%in%reference_name,meta_file[,mapping_column]%in% reference_name], 1, diss=TRUE)[["medoids"]]
     
     # Form a vector containing distances to self Medoid (in this case reference group has only one Medoid)
-    if (Test_name != "None"){
+    if (any(Test_name != "None")){
       self_distance <- c(as.numeric(unifract_dist[self_pam,1:sum(meta_file[,mapping_column] %in% reference_name)]),
                          as.numeric(apply(distances_matrix[(sum(meta_file[,mapping_column] %in% reference_name)+1):length(clusters),],1,function(x) x[as.numeric(x[(clusters_number+1)])])))
       } else{
@@ -1255,7 +1265,7 @@ if (ncol(taxonomy)!=0) {
     
     
     # plot_matrix -> matrix that will be used in the following plots
-    if (index == 0 & Test_name != "None") {
+    if (index == 0 & any(Test_name != "None")) {
       denovo_clusters <- denovo_clusters[rownames(distances_matrix)]
       plot_matrix <- data.frame(as.factor(c(denovo_clusters)),distances_matrix)
       } else {plot_matrix <- data.frame(as.factor(rep(0,nrow(distances_matrix))),distances_matrix)
@@ -1264,7 +1274,7 @@ if (ncol(taxonomy)!=0) {
     plot_matrix[meta_file[,mapping_column] %in% reference_name,(ncol(plot_matrix)+1)] <- paste(paste(reference_name,collapse="+"),plot_matrix[meta_file[,mapping_column]%in%reference_name,"Nearest.reference.cluster" ])
     
     # Change the names of the distances-based (DB) clusters
-    if (Test_name != "None") {
+    if (any(Test_name != "None")) {
       for (i in 1:length(levels)) {
         plot_matrix[meta_file[,mapping_column] == levels[i],ncol(plot_matrix)] <- paste0(levels[i]," ",plot_matrix[meta_file[,mapping_column] == levels[i],"Nearest.reference.cluster"],"(DB)")}
     }
@@ -1319,7 +1329,7 @@ if (ncol(taxonomy)!=0) {
     
     
     # Add the colours for the test groups
-    if (Test_name != "None"){
+    if (any(Test_name != "None")){
       for (i in 1:length(levels)){
         # Distances-based groups
         colour_groups <- c(colour_groups,levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)])))) 
@@ -1467,7 +1477,7 @@ if (ncol(taxonomy)!=0) {
       
       #------------------------- Statistic for each test cluster separately ---------------------#
       
-      if (index == 0 & Test_name!="None") {
+      if (index == 0 & any(Test_name != "None")) {
         
         # Preparing the vectors
         all_cluster_means <- c()
@@ -1525,7 +1535,7 @@ if (ncol(taxonomy)!=0) {
       }
       
       # Ordering the distances of all samples based on the reference clusters they belong
-      if (Test_name != "None") {
+      if (any(Test_name != "None")) {
         ordered_clusters <- c()
         for (i in 1:reference_clusters) {
           # Subset all the Samples 
@@ -1547,7 +1557,7 @@ if (ncol(taxonomy)!=0) {
     # Create a new vector that contains "YES" and "NO" 
     # YES indicates that the sample compared to all the other reference samples(except outliers) of the same cluster, is the most distant object 
     # NO will indicate the opposite 
-    if (Test_name != "None") {
+    if (any(Test_name != "None")) {
       maximum <- c()
       
       # find the outliers and exclude them from the vector and then calculate the maximum distance of each reference cluster
@@ -1580,7 +1590,7 @@ if (ncol(taxonomy)!=0) {
       rownames(median_distances) <- paste(reference_name,collapse="+")
     }
     
-    if (length(Test_name) > 0 & Test_name != "None"){
+    if (length(Test_name) > 0 & any(Test_name != "None")){
       for(i in 1:length(Test_name)){
         for(j in 1:reference_clusters){
           median_distances[1+i,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% Test_name[i],]),j])
@@ -1656,7 +1666,7 @@ if (ncol(taxonomy)!=0) {
       
       
       #--------------------- Chi square goodness of fit testing for Groups --------------------------#
-      if (Test_name != "None") {
+      if (any(Test_name != "None")) {
         combs <- combs(levels(input_table[,1]), 2)
         # Save the names of that combinations
         group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
@@ -1698,8 +1708,17 @@ if (ncol(taxonomy)!=0) {
         write_table("DiBaAn-page 8 Table 1.tab",Chi_square_matrix,"table")
       }
       
+      if (sum(nchar(colnames(Chi_square_matrix))) < 50) {
       # Table containing the observations per Group
       DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",Chi_square_matrix,setDT="YES",size=12)
+      } else {
+        chi_matrix_large <- data.frame(rbind("The table is too large to be printed!!",
+                                       "* The results are at the results folder"))
+        colnames(chi_matrix_large) <- c("")
+        DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",chi_matrix_large,setDT="NO",size=12)
+        
+      }
+      
       
       
       
@@ -1755,17 +1774,17 @@ if (ncol(taxonomy)!=0) {
       
       #--------------------------------- Prepare the tables for the pdf------------------------#
       
-      if (Test_name!="None") {
+      if (any(Test_name != "None")) {
         
         if (chi_square == 1){
           
           # Write the Chi_square_matrix
-          write_table("DiBaAn-page 8 Table 2.tab",p_value,"table")
+          write_table("DiBaAn-page 9 Table 2.tab",p_value,"table")
           
         }else{
           
           # Write the Chi_square_matrix
-          write_table("DiBaAn-page 7 Table 2.tab",p_value,"table")
+          write_table("DiBaAn-page 8 Table 2.tab",p_value,"table")
         }
         
         
@@ -1778,7 +1797,7 @@ if (ncol(taxonomy)!=0) {
     
     
     
-    if (Test_name != "None") {
+    if (any(Test_name != "None")) {
       
       ################################################################################################################################
       #-------------------------- Boxplots presenting the differnces between the refernence clusters  -------------------------------#
@@ -1844,9 +1863,15 @@ if (ncol(taxonomy)!=0) {
       
       #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
       
-      
-      # Calculate the p-values of the Wilcoxon Rank sum test 
-      pvalues2 <- pvalues_function2(dist_plot_1,3,"DiBaAn-",10)
+      if (chi_square==1){
+        
+        # Calculate the p-values of the Wilcoxon Rank sum test 
+        pvalues2 <- pvalues_function2(dist_plot_1,3,"DiBaAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+2+10))
+      } else {
+        # Calculate the p-values of the Wilcoxon Rank sum test 
+        pvalues2 <- pvalues_function2(dist_plot_1,3,"DiBaAn-",11)
+      }
+
       
       
       # gtable of the p-values
@@ -2031,9 +2056,15 @@ if (ncol(taxonomy)!=0) {
         
         
         #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
-        
+        if (chi_square == 1){
+          
+          # Calculate the p-values of the Wilcoxon Rank sum test 
+          pvalues2 <- pvalues_function(dist_plot_3,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+5))
+          
+        } else {
         # Calculate the p-values of the Wilcoxon Rank sum test 
         pvalues2 <- pvalues_function(dist_plot_3,"DeNoAn-",5)
+        }
         
         # gtable of the p-values
         pvaltable3 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
@@ -2168,8 +2199,17 @@ if (ncol(taxonomy)!=0) {
         
         #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
         
-        # Calculate the p-values of the Wilcoxon Rank sum test 
-        pvalues2 <- pvalues_function2(dist_plot_4,3,"DeNoAn-",9)
+        if (chi_square == 1){ 
+          
+          # Calculate the p-values of the Wilcoxon Rank sum test 
+          pvalues2 <- pvalues_function2(dist_plot_4,3,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+9))
+          
+          } else {
+            
+          # Calculate the p-values of the Wilcoxon Rank sum test 
+          pvalues2 <- pvalues_function2(dist_plot_4,3,"DeNoAn-",9)
+        }
+
         
         
         # gtable of the p-values
@@ -2198,7 +2238,7 @@ if (ncol(taxonomy)!=0) {
         #--------Create a list of text--------------#
         
         if (chi_square == 1){
-          write_table(paste("DeNoAn-page", (length(exploratory_columns)*3+7), "Table.tab"),observations_matrtix,"table")
+          write_table(paste("DeNoAn-page", (length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+6), "Table.tab"),observations_matrtix,"table")
         }else{
           write_table("DeNoAn-page 6 Table.tab",observations_matrtix,"table")}
         
@@ -2206,7 +2246,7 @@ if (ncol(taxonomy)!=0) {
         observation <- gtableGrob("Closest Reference cluster",observations_matrtix,setDT="YES",size=15)
         
         if(chi_square == 1){
-          write_table(paste("DeNoAn-page",(length(exploratory_columns)*3+7) , "Table.tab"),median_matrix,"table")
+          write_table(paste("DeNoAn-page",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+8) , "Table.tab"),median_matrix,"table")
         }else{
           write_table("DeNoAn-page 8 Table.tab",median_matrix,"table")}
         
@@ -2261,9 +2301,15 @@ if (ncol(taxonomy)!=0) {
         
         #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
         
-        
+        if (chi_square == 1){
+          
+          # Calculate the p-values of the Wilcoxon Rank sum test 
+          pvalues2 <- pvalues_function(dist_plot_5,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+7))
+        } else {
+          
         # Calculate the p-values of the Wilcoxon Rank sum test 
         pvalues2 <- pvalues_function(dist_plot_5,"DeNoAn-",7)
+        }
         
         # Create a gtable containing text grobs 
         pvaltable5 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
@@ -2315,7 +2361,7 @@ if (ncol(taxonomy)!=0) {
       
     }
     
-    if (Test_name != "None"){
+    if (any(Test_name != "None")){
       
       setwd(plots_path)
       
@@ -2348,7 +2394,7 @@ if (ncol(taxonomy)!=0) {
     
     
     
-    if (Test_name != "None") {
+    if (any(Test_name != "None")) {
       
       
       ########################################################################################
@@ -2763,7 +2809,7 @@ if (ncol(taxonomy)!=0) {
                     chi_p_value_ref_rows <- c(); test <- c()
                     for(chii in 1:nrow(combs)) { 
                       # Performed the Chi square test
-                      chi_p_value_ref_rows[chii] <- round(chisq.test(as.numeric(chi_matrix[combs[chii,2],]),p=as.numeric(chi_matrix[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
+                      chi_p_value_ref_rows[chii] <- round(chisq.test(as.numeric(chi_ref[combs[chii,2],]),p=as.numeric(chi_ref[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
                     
                     # Replace 0.01 with 0
                     chi_ref[chi_ref == 0.01] <- 0
@@ -2810,7 +2856,7 @@ if (ncol(taxonomy)!=0) {
                     chi_p_value_test_rows <- c(); test <- c()
                     for(chii in 1:nrow(combs)) { 
                       # Performed the Chi square test
-                      chi_p_value_test_rows[chii] <- round(chisq.test(as.numeric(chi_matrix[combs[chii,2],]),p=as.numeric(chi_matrix[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
+                      chi_p_value_test_rows[chii] <- round(chisq.test(as.numeric(chi_test[combs[chii,2],]),p=as.numeric(chi_test[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
                     
                     # Replace 0.01 with 0
                     chi_test[chi_test == 0.01] <- 0
@@ -2869,13 +2915,13 @@ if (ncol(taxonomy)!=0) {
                     if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
                     
                     # Write Reference counts table at result folder
-                    write_table(paste0("DeBaAn-page ",page,reference_name," Group (Table 1).tab"),chi_ref,"table")
+                    write_table(paste0("DiBaAn-page ",page,reference_name," Group (Table 1).tab"),chi_ref,"table")
                     # Write test counts table at result folder
-                    write_table(paste0("DeBaAn-page ",page,Test_name[i]," Group (Table 2).tab"),chi_test,"table")
+                    write_table(paste0("DiBaAn-page ",page,Test_name[i]," Group (Table 2).tab"),chi_test,"table")
                     # Write Expected-observed p-values at result folder
-                    write_table(paste0("DeBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                    write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
                     # Write pairwise p-values at result folder
-                    write_table(paste0("DeBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                    write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
                     
                     if ((sum(nchar(colnames(chi_ref)))+sum(nchar(colnames(chi_test)))) < 80){
                       # Tile of the page
@@ -3091,11 +3137,11 @@ if (ncol(taxonomy)!=0) {
                     }
                     
                     # Write counts table at results folder
-                    write_table(paste0("DeBaAn-page ",page, " Counts per Cluster (Table 1).tab"),chi_matrix,"table")
+                    write_table(paste0("DiBaAn-page ",page, " Counts per Cluster (Table 1).tab"),chi_matrix,"table")
                     # Write Expected-observed p-values at results folder
-                    write_table(paste0("DeBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                    write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
                     # Write pairwise p-values at results folder
-                    write_table(paste0("DeBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                    write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
                     
                     if (sum(nchar(colnames(chi_matrix))) < 80) {
                       
@@ -3434,7 +3480,7 @@ if (ncol(taxonomy)!=0) {
     ########## De novo-based report #################
     #################################################
     
-    if (index == 0 & Test_name != "None") {
+    if (index == 0 & any(Test_name != "None")) {
       
       # Create the lists where the plots will be saved
       boxplot_list <- list()
@@ -3633,9 +3679,7 @@ if (ncol(taxonomy)!=0) {
           # Check if the column is character of factor
           if (is.character(meta_file[,exploratory_columns[k]]) == TRUE | is.factor(meta_file[,exploratory_columns[k]]) == TRUE ){
             
-            # Index indicating the page of the report
-            page <- page+1
-            
+
             # Tile of the page
             text1 <- paste0("'",exploratory_columns[k],"' Column")
             
@@ -4204,7 +4248,7 @@ if (ncol(taxonomy)!=0) {
       
       dev.off()
       
-    } else if (index == 1 & Test_name == "None") {
+    } else if (index == 1 & all(Test_name == "None")) {
       
       # Report in case there are no test groups
       
@@ -4371,7 +4415,7 @@ if (ncol(taxonomy)!=0) {
     # Name the rows of the description_analysis
     rownames(description_analysis) <- c("OTUs/ASVs table:","Normalized:","Tree or Distances matrix:","Name of tree:","Name of the mapping file:",
                                         "Column of the mapping file:","Reference group(s):","Number of reference clusters:",
-                                        "Names of the test group(s)","Number of test clusters:", "Exploratory columns:","Central points:","plot type:")
+                                        "Names of the test group(s):","Number of test clusters:", "Exploratory columns:","Central points:","plot type:")
     # Name the rows of the description_analysis
     colnames(description_analysis) <- c("")
     
@@ -4386,7 +4430,7 @@ if (ncol(taxonomy)!=0) {
     write.table(distances_matrix, "Distances From Cluster Medoids.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
     
     # Write a table that contains the ordered distance of all the samples
-    if (Test_name != "None") {
+    if (any(Test_name != "None")) {
       write.table(ordered_clusters, "Ordered cluster distances(All Samples).tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
     }
     
