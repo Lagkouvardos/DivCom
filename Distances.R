@@ -81,7 +81,7 @@ input_meta = "mapping_file.tab"
 
 
 #' Please provide the name or the number of the column (of the mapping file) based on which the samples will be partitioned into groups
-mapping_column = "State"
+mapping_column = "Condition"
 
 
 #' Please place in the vector one or more names which will be used to identify the samples that compose
