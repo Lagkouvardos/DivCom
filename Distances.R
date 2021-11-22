@@ -1,11 +1,15 @@
 #'
+#'This script was last modified on 21/11/2021
+#'
+#'Script Task: 
+#'
 #' The script performs de novo clustering of the groups and then calculate the distances from 
-#' the most representative points of the each cluster. 
+#' the most representative points of each cluster. 
 #' Then, conducts statistical analysis and produces plots and tables. 
 #'
-#' Input:
+#' Input: Please enter the following parameters
 #' 1. Set the path to the directory where the file is stored 
-#' 2. Write the name of the OTU table without taxonomy information
+#' 2. Write the name of the OTU table of interest in quotes
 #' 3. Write if the OTUs table is normalized or not
 #' 4. Write the name of the mapping file that includes the samples groups
 #' 5. Write if you will provide distance matrix or phylogenetic tree
@@ -21,7 +25,7 @@
 #' 
 #'
 #' Output: 
-#' The script generates three graphical outputs (pdf), one text file and a newick tree
+#' The script generates two reports in pdf format, 3 folder where the results are printed and a mapping file
 #' 1. A Distances Based Analysis report
 #' 2. A De Novo Analysis report
 #' 3. A folder with the p-values tables for the different tests 
@@ -31,14 +35,13 @@
 #' 
 #'
 #' Concept:
-#' A common problem in data analysis is to efficiently comparing a group of control samples with a set of test samples.
+#' A common problem in data analysis is to efficiently compare a group of control samples with a set of test samples.
 #' The relation existing between different groups can be highly affected by their substructure.
 #' Instead of comparing the groups as entireties, the program performs de novo clustering(with PAM algorithm) 
 #' to both the control and test groups.
 #' Then, finds the most representative points of the reference  dataset and calculates the distances(Generalized Unifrac) 
 #' of the test groups from these points.
 #' To determine  the level of similarity between the groups, the script performs statistical analysis and produces various plots.
-#' 
 
 
 ###########################################################################################################################################################
@@ -78,10 +81,10 @@ input_meta = "mapping_file.tab"
 
 
 #' Please provide the name or the number of the column (of the mapping file) based on which the samples will be partitioned into groups
-mapping_column = "Condition"
+mapping_column = "State"
 
 
-#' Please place in the vector one or more names which will be used to identify the samples that composing 
+#' Please place in the vector one or more names which will be used to identify the samples that compose
 #'         the REFERENCE group (e.g reference_name <- c("group_a","group_b"))
 #' -> -> !!! CAUTION: You should provide at least one name!!! <- <-
 reference_name = c("NI")
