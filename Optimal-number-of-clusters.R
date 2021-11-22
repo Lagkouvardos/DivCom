@@ -1,9 +1,12 @@
-#' Script: Beta-Diversity
+#' Script: Beta-Diversity#' 
+#' #'This script was last modified on 21/11/2021
+
 #' Author: Ilias Lagkouvardos
 #'
-#' Calculate beta-diversity for microbial communities
+#' 1.Calculate beta-diversity for microbial communities
 #' based on permutational mulitvariate analysis of variances (PERMANOVA) using multiple distance matrices
 #' computed from phylogenetic distances between observed organisms
+#' 2.Produce the plots of three different validation indices
 #'
 #' Input:
 #' 1. Set the path to the directory where the file is stored 
@@ -37,13 +40,14 @@
 #' The Calinski-Harabasz (CH), silhouette Index, Within Sum of Squares (WSS) plot, and Prediction Strength plot 
 #' are used to assess the optimal number of clusters the dataset was most robustly partitioned into  
 
+
 ##################################################################################
 ######             Set parameters in this section manually                  ######
 ##################################################################################
 
 #' Please set the directory of the script as the working folder (e.g D:/studyname/NGS-Data/Rhea/beta-diversity/)
 #' Note: the path is denoted by forward slash "/"
-setwd("D:/path/to/Rhea/3.Beta-Diversity/")     #<--- CHANGE ACCORDINGLY !!!
+setwd("D:/path/to/DivCom/Optimal Number of Clusters/")     #<--- CHANGE ACCORDINGLY !!!
 
 #' Please give the name of the OTUs or ASVs table
 input_otu = "SOTUs-Table.tab"              #<--- CHANGE ACCORDINGLY !!!
@@ -51,7 +55,7 @@ input_otu = "SOTUs-Table.tab"              #<--- CHANGE ACCORDINGLY !!!
 
 #' Please insert "YES" if the OTUs/ASVs table is normalized otherwise, insert "NO"
 #' In case the table is not normalized, the OTUs/ASVs table will be normalized based on the minimum sum of reads of the samples.
-normalized = "YES"
+normalized = "NO"
 
 #' Choose if you will insert a distances matrix or the phylogenetic tree of the OTUs/ASVs sequences
 #' There are two options: "distances matrix" or "tree"
@@ -71,7 +75,7 @@ input_meta = "mapping_file.tab"              #<--- CHANGE ACCORDINGLY !!!
 
 
 #' Please provide the name or the number of the column (of the mapping file) based on which the samples will be partitioned into groups
-mapping_column = "Disease"                    #<--- CHANGE ACCORDINGLY !!!
+mapping_column = "Condition"                    #<--- CHANGE ACCORDINGLY !!!
 
 #' Please place in the vector one or more names which will be used to identify the samples that composing 
 #'         the REFERENCE group (e.g reference_name <- c("group_a","group_b"))
@@ -83,7 +87,7 @@ Reference_name = c("NI")
 #' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the groups (e.g test_name <- c("group_a","group_b"))
 #' 2)     c()             --> In case you insert an empty vector,there won't be any test group. 
 #'                            Only the indeces of the reference samples will be calculated (Not recommended)
-Test_name =c("CD.3M","CD.B")
+Test_name =c("IBD")
 
 
 
