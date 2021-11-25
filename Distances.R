@@ -49,7 +49,7 @@
 ###########################################################################################################################################################
 
 
-#' Please set the directory of the script as the working folder (e.g D:/studyname/NGS-Data/Rhea/beta-diversity/)
+#' Please set the directory of the script as the working folder
 #' Note: the path is denoted by forward slash "/"
 setwd("C:/...../..../Distances")  #<--- CHANGE ACCORDINGLY !!!
 
