@@ -15,7 +15,7 @@ DivCom consists of two scripts:
 
 The first script that the user should run is named 'Optimal Number of Clusters'. Its purpose is to provide all the necessary information about the number of clusters of each group. This information will be used in the 'Distances' script, which is the main script of the program that applies the proposed methodology. Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
 
-The pre-processing of the raw sequencing data through the IMNGS platform (www.imngs.org) can provide the user with the necessary input files for the DivCom. Also, the  outputs derived from the Rhea pipeline (https://github.com/Lagkouvardos/Rhea) have the appropriate form to be used as inputs to the DivCom.
+The pre-processing of the raw sequencing data through the [IMNGS](https://www.imngs.org/ "IMNGS download site") platform can provide the user with the necessary input files for the DivCom. Also, the  outputs derived from the [Rhea](https://github.com/Lagkouvardos/Rhea/ "Rhea download site") pipeline have the appropriate form to be used as inputs to the DivCom.
 
 A detailed README file is provided for each of the scripts. In these files, the procedures followed by the program are described, and all the requirements are specified.
 
@@ -113,7 +113,7 @@ The main section contains the actual code that applies the methodology of the sc
 
 
 ### Requirements
-In order to execute the scripts, it is required the R language [R language](https://www.r-project.org/ "R download site") to be locally installed. The use of the [R-Studio](https://www.rstudio.com/products/rstudio-desktop/ "R-studio download site") will simplify the procedure even for non-experienced users. During the first execution of the program, all the necessary packages will be installed, so at least for this first run, a stable internet connection is required. 
+In order to execute the scripts, it is required the [R language](https://www.r-project.org/ "R download site") to be locally installed. The use of the [R-Studio](https://www.rstudio.com/products/rstudio-desktop/ "R-studio download site") will simplify the procedure even for non-experienced users. During the first execution of the program, all the necessary packages will be installed, so at least for this first run, a stable internet connection is required. 
 
 
 ### Installation
