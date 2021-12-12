@@ -212,6 +212,9 @@ flag <- all(as.logical(lib))
 #################################################  Functions that will be used in main Script. ############################################################
 ###########################################################################################################################################################
 
+# Disable printing the results in scientific notation
+options(scipen=999)
+
 #----------------------------------------------------------------------------#
 #************** Fuction that saves plots in png format **********************#
 #----------------------------------------------------------------------------#
@@ -797,7 +800,7 @@ if (ncol(taxonomy)!=0) {
   
   
   # Check if the number of the given test clusters is equal to the number of the test groups
-  if (length(test_clusters) != length(levels) & Test_name == "All") {test_clusters <- c()
+  if (length(test_clusters) != length(levels) & all(Test_name == "All")) {test_clusters <- c()
   index <- 1}
   
   # Check if the number of the given test clusters is equal to the number of the test groups
@@ -1589,14 +1592,14 @@ if (ncol(taxonomy)!=0) {
     
     median_distances <- data.frame()
     for(j in 1:reference_clusters){
-      median_distances[1,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% reference_name,]),j])
+      median_distances[1,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% reference_name,, drop = FALSE]),j])
       rownames(median_distances) <- paste(reference_name,collapse="+")
     }
     
     if (length(Test_name) > 0 & any(Test_name != "None")){
       for(i in 1:length(Test_name)){
         for(j in 1:reference_clusters){
-          median_distances[1+i,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% Test_name[i],]),j])
+          median_distances[1+i,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% Test_name[i],, drop = FALSE]),j])
         }
       }
       rownames(median_distances) <- c(paste(reference_name,collapse="+"),Test_name)
