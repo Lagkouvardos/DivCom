@@ -10,8 +10,8 @@ When analyzing microbiome data, one of the main objectives is to effectively com
 ### Organization
 DivCom consists of two scripts:
 
-1.	Optimal Number of Clusters
-2.	Distances
+1.	Beta-Diversity
+2.	DivCom
 
 The first script that the user should run is named 'Optimal Number of Clusters'. Its purpose is to provide all the necessary information about the number of clusters of each group. This information will be used in the 'Distances' script, which is the main script of the program that applies the proposed methodology. Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
 
