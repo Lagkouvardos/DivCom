@@ -1690,18 +1690,23 @@ if (ncol(taxonomy)!=0) {
         p_value <- data.frame(group_names)
         # Naming the rows of the p_value data frame
         p_value[,2] <- chi_p_value
-        # Naming the columns of p_value data frame
-        colnames(p_value) <- c("Groups","p value")
-        
-        
         # Convert p-values column into numeric
         p_value[,2] <- as.numeric(p_value[,2])
+        # Performing fdr correction
+        adjustb <- round(p.adjust(c(p_value[,2]), method = "BH"),4)
+        # Add the adjusted p-values in the expected matrix
+        p_value[,3]<- adjustb
+        # Naming the columns of p_value data frame
+        colnames(p_value) <- c("Groups","P-values","Adj p-values")
+        
+        
+
         # Order the p-values
-        p_value <- p_value[order(p_value[,2]),]
+        p_value <- p_value[order(p_value[,3]),]
         # Choose the first 10 most significant p-values
         if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
       }
-      
+
       
       #--------------------------------- Prepare the tables for the pdf------------------------#
       
@@ -1714,7 +1719,7 @@ if (ncol(taxonomy)!=0) {
         write_table("DiBaAn-page 8 Table 1.tab",Chi_square_matrix,"table")
       }
       
-      if (sum(nchar(colnames(Chi_square_matrix))) < 50) {
+      if (sum(nchar(colnames(Chi_square_matrix))) < 40) {
       # Table containing the observations per Group
       DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",Chi_square_matrix,setDT="YES",size=12)
       } else {
@@ -2647,7 +2652,7 @@ if (ncol(taxonomy)!=0) {
         # Index indicating the page of the report
         page <- page+1
         
-        # Tile of the 7th page
+        # Tile of the 8th page
         text1 <- paste("Distances from the closest reference",central_point)
         
         # Create a text grob for the title
@@ -3410,14 +3415,20 @@ if (ncol(taxonomy)!=0) {
           # Text that will we used as description for every reference cluster
           text <- c()
           
-          for(group in 1:length((Test_name))) { 
-            # Subset the samples of each test group
-            temporary <- plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]
-            # Write how many samples of each test group is closer to every reference cluster
-            paste2 <- paste(nrow(temporary[temporary$Nearest.reference.cluster == cluster,]),"of the", nrow(plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]),
-                            "samples of the", levels[group], " group are closer to the reference cluster",cluster,"\n")
-            # Final text
-            text <- paste(text,paste2)}
+          if (length(Test_name)<6){
+            
+            for(group in 1:length((Test_name))) { 
+              # Subset the samples of each test group
+              temporary <- plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]
+              # Write how many samples of each test group is closer to every reference cluster
+              paste2 <- paste(nrow(temporary[temporary$Nearest.reference.cluster == cluster,]),"of the", nrow(plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]),
+                              "samples of the", levels[group], " group are closer to the reference cluster",cluster,"\n")
+              # Final text
+              text <- paste(text,paste2)
+            }
+          } else {
+            text <- paste("The next MDS plot presents the closest samples of each group to the reference cluster",cluster)
+          }
           
           # Information about the number of the test samples that are closer to each reference cluster
           text(x=0.5, y = 0.25, text,  cex = 1.3, col = "black",font=3)
