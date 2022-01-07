@@ -1,13 +1,20 @@
+
+#'Script Title: DivCom 
+#'#'This script was last modified on 05/01/2022
+#'Authors: Evangelia Intze, Ilias Lagkouvardos
 #'
-#'This script was last modified on 21/11/2021
 #'
-#'Script Task: 
+#
+#'##############################################################################################
+#'############################### DivCom Script Overview #######################################
+#'############################################################################################## 
 #'
 #' The script performs de novo clustering of the groups and then calculate the distances from 
 #' the most representative points of each cluster. 
 #' Then, conducts statistical analysis and produces plots and tables. 
 #'
-#' Input: Please enter the following parameters
+#' Input: 
+#' Please enter the following parameters
 #' 1. Set the path to the directory where the file is stored 
 #' 2. Write the name of the OTU table of interest in quotes
 #' 3. Write if the OTUs table is normalized or not
@@ -21,7 +28,7 @@
 #'10. Write the desired number of clusters for the test groups
 #'11  Write the names of the columns used for chi-square comparisons
 #'12. Write if the central point of each cluster will be the medoid, the median or mean point
-#'13. Write the preffered type of plot 
+#'13. Write the preferred type of plot 
 #' 
 #'
 #' Output: 
@@ -45,13 +52,13 @@
 
 
 ###########################################################################################################################################################
-###################################################### Set parameters in this section manually ############################################################
+################################################### SET PARAMETERS IN THIS SECTION MANUALLY ###############################################################
 ###########################################################################################################################################################
 
 
 #' Please set the directory of the script as the working folder
 #' Note: the path is denoted by forward slash "/"
-setwd("C:/...../..../Distances")  #<--- CHANGE ACCORDINGLY !!!
+setwd("C:/...../..../DivCom")  #<--- CHANGE ACCORDINGLY !!!
 
 
 #' Please give the name of the OTUs or ASVs table
@@ -105,7 +112,7 @@ Test_name = c("IBD")
 #' OPTIONAL-  Please insert the desired number of clusters for every test group (e.g test_clusters= c(3,2))
 #' -> -> !! CAUTION: The number of clusters should be more than one !! <- <-
 #' If you do not wish to perform de novo clustering to the test groups just insert an empty vector  (e.g test_clusters= c())
-test_clusters = c(5)
+test_clusters = c(2)
 
 
 #' OPTIONAL- Please insert the names of the columns of the mapping file you wish to analyze against the de novo clusters 
@@ -172,6 +179,7 @@ tables_path    <- paste0(results_path,"/",tables_folder)
 dir.create(paste0(results_path,"/",tables_folder))
 
 
+
 ############################################################################################################################################################
 #############################################  Load all required libraries #################################################################################
 ############################################################################################################################################################
@@ -216,7 +224,7 @@ flag <- all(as.logical(lib))
 options(scipen=999)
 
 #----------------------------------------------------------------------------#
-#************** Fuction that saves plots in png format **********************#
+#************** Function that saves plots in png format *********************#
 #----------------------------------------------------------------------------#
 
 # name -> name of the output file
@@ -240,7 +248,7 @@ png_plot <- function(name,plot) {
 
 
 #----------------------------------------------------------------------------#
-#************** Fuction that saves tables in tab format *********************#
+#************** Function that saves tables in tab format ********************#
 #----------------------------------------------------------------------------#
 
 # name   -> name of the output file
@@ -453,7 +461,7 @@ pvalues_function2 <- function(dist_matrix,reference_clusters,report,page){
 
 
 #------------------------------------------------------------------------------#
-#****************** Function that generates cladorgams ************************#
+#****************** Function that generates cladorgrams ***********************#
 #------------------------------------------------------------------------------#
 
 # distance -> The given distances matrix 
@@ -626,7 +634,7 @@ if (ncol(meta_file)==0 | nrow(meta_file)==0){
 }
 
 # Clean table from empty lines
-#meta_file <- data.frame(meta_file[!apply(is.na(meta_file) | meta_file=="",1,all),])
+meta_file <- data.frame(meta_file[!apply(is.na(meta_file) | meta_file=="",1,all),,drop=FALSE])
 
 # Order the rows of the meta file
 if (ncol(meta_file)==1){
@@ -660,7 +668,7 @@ if (ncol(otu_table)==0 | nrow(otu_table)==0){
 otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
 
 # Clean table from empty lines
-otu_table <- otu_table[!apply(is.na(otu_table) | otu_table=="",1,all),]
+otu_table <- otu_table[!apply(is.na(otu_table) | otu_table=="",1,all),,drop=FALSE]
 
 # Check if a column with taxonomy information exists
 taxonomy <- otu_table %>% select_if(is.factor)
@@ -1130,7 +1138,7 @@ if (ncol(taxonomy)!=0) {
     }
     
     #########################################################################################################################################################
-    ############################################      Forming auxiliary variables that will     ##############################################################
+    ############################################      Forming auxiliary variables that will     #############################################################
     ############################################          be used in the following steps       ##############################################################
     #########################################################################################################################################################
     
@@ -1811,7 +1819,7 @@ if (ncol(taxonomy)!=0) {
     if (any(Test_name != "None")) {
       
       ################################################################################################################################
-      #-------------------------- Boxplots presenting the differnces between the refernence clusters  -------------------------------#
+      #-------------------------- Boxplots presenting the differences between the reference clusters  -------------------------------#
       #--------------------------     and the samples that are closer to each of these clusters       -------------------------------#
       #--------------------------                            (plot 1)                                 -------------------------------#
       ################################################################################################################################
@@ -1827,19 +1835,19 @@ if (ncol(taxonomy)!=0) {
       dist_plot_1 <- c()
       
       for (j in 1:reference_clusters) {
-        # dist1 -> aucillary matrix with the distances of the reference samples from the closest reference medoid
+        # dist1 -> Auxiliary matrix with the distances of the reference samples from the closest reference medoid
         dist1 <- cluster_dist_ref[cluster_dist_ref$Nearest.reference.cluster == j,c(ncol(plot_matrix),(j+1))]
         # Create a column with the index of the closest reference cluster
         dist1[,3] <- c(rep(j,nrow(dist1)))
         # Name the columns
         colnames(dist1) <- c("names","distances","cluster")
         
-        # dist3 -> aucillary matrix with the distances of the reference samples and test samples
+        # dist3 -> Auxiliary matrix with the distances of the reference samples and test samples
         dist3 <- c()
         for (k in 1:length(levels)){
           # Form a temporary matrix with the distances of each test group
           temporary_matrix <- plot_matrix[input_table[,1] == levels[k],]
-          # dist2 -> aucillary matrix with the distances of the test samples from the closest reference medoid
+          # dist2 -> Auxiliary matrix with the distances of the test samples from the closest reference medoid
           dist2 <- temporary_matrix[temporary_matrix$Nearest.reference.cluster == j,c(ncol(plot_matrix),(j+1))]
           # Create a column with the index of the closest reference cluster
           dist2[,3] <- c(rep(j,nrow(dist2)))
@@ -2561,7 +2569,7 @@ if (ncol(taxonomy)!=0) {
       # Title of the plot
       title(main="MDS Plot",cex.main = 1.7,font.main = 2)
       # Text of the plot
-      text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n"," clustered into 3 Groups\n",
+      text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n"," clustered into ", test_clusters ," Groups\n",
                                    "and the test samples (", paste(Test_name,collapse="-"), ") as individual points" ),cex = 1.5, col = "black")
       
       # MDS plot where the refernce groups has been clustered and all the test samples are represented as individual points
@@ -3275,7 +3283,7 @@ if (ncol(taxonomy)!=0) {
       # Create an empty plot
       plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
       # Description of the MDS plot
-      text(x=0.5, y = 0.8, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") clustered into 3 Groups\n", "and the test samples (" ,paste(Test_name,collapse="-"), ")\n",
+      text(x=0.5, y = 0.8, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") clustered into ",test_clusters, " Groups\n", "and the test samples (" ,paste(Test_name,collapse="-"), ")\n",
                                   "clustered into groups based on their distances from the closest reference ",central_point,"." ), cex = 1.5, col = "black")
       
       # Default margins
@@ -3415,7 +3423,7 @@ if (ncol(taxonomy)!=0) {
           # Text that will we used as description for every reference cluster
           text <- c()
           
-          if (length(Test_name)<6){
+          if (length(Test_name)<5){
             
             for(group in 1:length((Test_name))) { 
               # Subset the samples of each test group

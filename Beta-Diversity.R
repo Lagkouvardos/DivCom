@@ -1,10 +1,15 @@
-#' Script: Beta-Diversity#' 
-#' #'This script was last modified on 21/11/2021
+
+#' Script: Beta-Diversity
+#' #'This script was last modified on 05/01/2022
 
 #' Author: Ilias Lagkouvardos
+#' 
+#'##############################################################################################
+#'######################### Beta-Diversity Script Overview #####################################
+#'############################################################################################## 
 #'
 #' 1.Calculate beta-diversity for microbial communities
-#' based on permutational mulitvariate analysis of variances (PERMANOVA) using multiple distance matrices
+#' based on permutational multivariate analysis of variances (PERMANOVA) using multiple distance matrices
 #' computed from phylogenetic distances between observed organisms
 #' 2.Produce the plots of three different validation indices
 #'
@@ -17,7 +22,7 @@
 #' 6. Write the name of the OTU tree or the phylogenetic tree
 #' 7. Write the name of the mapping file of the variable (sample group) used for comparison
 #' 8. Write the name of groups that will be used for as reference groups
-#' 9. Write the name of groups that will be used for as teference groups
+#' 9. Write the name of groups that will be used for as reference groups
 #' 
 #' 
 #'
@@ -47,10 +52,10 @@
 
 #' Please set the directory of the script as the working folder (e.g D:/studyname/NGS-Data/Rhea/beta-diversity/)
 #' Note: the path is denoted by forward slash "/"
-setwd("D:/path/to/DivCom/Optimal Number of Clusters/")     #<--- CHANGE ACCORDINGLY !!!
+setwd("D:/path/to/DivCom/")     #<--- CHANGE ACCORDINGLY !!!
 
 #' Please give the name of the OTUs or ASVs table
-input_otu = "SOTUs-Table.tab"              #<--- CHANGE ACCORDINGLY !!!
+input_otu = "OTUs-Table.tab"              #<--- CHANGE ACCORDINGLY !!!
 
 
 #' Please insert "YES" if the OTUs/ASVs table is normalized otherwise, insert "NO"
@@ -66,7 +71,7 @@ tree_or_matrix = "tree"
 
 #' Please insert the name of the distances matrix or the anme of the phylogenetic tree 
 #' -> -> !!! In case you will choose the "mean" or "median" option you HAVE TO provide a phylogenetic tree !!! <- <-
-input_tree_or_matrix = "SOTUs-NJTree.tre" 
+input_tree_or_matrix = "OTUs-NJTree.tre" 
 
 
 #' Please give the name of the mapping file which contains the labels of the samples
@@ -97,15 +102,15 @@ Test_name =c("IBD")
 
 #' Turn on sample labeling
 #' 0 = Samples are not labeled in the MDS/NMDS plots
-#' 1 = All Samples are labed in the MDS/NMDS plots
+#' 1 = All Samples are labeled in the MDS/NMDS plots
 label_samples = 0
 
-#' Determine which sample lable should appear
+#' Determine which sample labeled should appear
 #' Write the name of samples (in quotation marks), which should appear in the MDS/NMDS plots, in the vector (c) below
 #' If more than one sample should be plotted, please separate their IDs by comma (e.g. c("sample1","sample2"))
 label_id =c("")
 
-#' De-Novo Clustering will be perfomed for the number of samples or maximal for the set limit
+#' De-Novo Clustering will be performed for the number of samples or maximal for the set limit
 #' Default Limit is 10
 kmers_limit=10
 
@@ -152,13 +157,14 @@ flag <- all(as.logical(lib))
 
 
 ###################################################################################
-#################            Necesssary functions                 #################
+#################            Necessary functions                  #################
 ###################################################################################
 
 #------------------------ Function that generates MDS plots-----------------------#
 
 # distance -> the given distance matrix 
-# groups -> a vector that contains the indexes of the groups 
+#   groups -> a vector that contains the indexes of the groups
+#     kp   -> Number of clusters 
 
 sclass <- function(dist,all_groups, kp) {
   
@@ -219,7 +225,7 @@ if (ncol(meta_file)==0 | nrow(meta_file)==0){
 
 
 # Clean table from empty lines
-#meta_file <- data.frame(meta_file[!apply(is.na(meta_file) | meta_file=="",1,all),])
+meta_file <- data.frame(meta_file[!apply(is.na(meta_file) | meta_file=="",1,all),])
 
 # Order meta file
 if (ncol(meta_file)==1){
@@ -253,7 +259,7 @@ if (ncol(otu_table)==0 | nrow(otu_table)==0){
 otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
 
 # Clean table from empty lines
-otu_table <- otu_table[!apply(is.na(otu_table) | otu_table=="",1,all),]
+otu_table <- otu_table[!apply(is.na(otu_table) | otu_table=="",1,all),, drop = FALSE]
 
 # Check if exists a column with taxonomy information
 taxonomy <- otu_table %>% select_if(is.factor)
@@ -269,7 +275,7 @@ if (ncol(taxonomy)!=0) {
 { if(all(rownames(meta_file) %in% rownames(otu_table))==FALSE & all(rownames(meta_file) %in% colnames(otu_table))==FALSE)
   stop ("Some rows of the mapping file are not present present in the OTUS file. \n Fix that problem and try again!")
   
-  #--Normalizethe OTUs table (if the user ask for)--#
+  #--Normalize the OTUs table (if the user ask for)--#
   if (normalized=="YES") {
     
     # Check if Samples are in rows or columns
@@ -572,11 +578,6 @@ if (dim(table(unique_groups)) > 2) {
 ##############################################################################################
 
 
-
-#############################################################################
-#####################    Prediction Indices       ###########################
-#############################################################################
-
 for (i in 1:(length(Test_name)+1)){
   
 if (i==1){
@@ -663,10 +664,9 @@ if (i==1){
 }
 
 
-
 # Change working directory
 setwd(results_path)
-# Write the distance matrix table in a file !!!!!!!!!!<--------------------------
+# Write the distance matrix table in a file 
 write.table( unifract_dist, paste0("distance-matrix-gunif","(",paste(groups_name,collapse="-"),").tab"), sep = "\t", col.names = NA, quote = FALSE)
 
 # Change working directory
