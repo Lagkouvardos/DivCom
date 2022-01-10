@@ -125,6 +125,8 @@ kmers_limit=10
 ############################################################ Main Script ###################################################################################
 ############################################################################################################################################################
 
+# Save the variables of the active working environment
+ls <- c("meta_file","otu_file","unifract_dist_all",ls())
 
 
 ###################       Load all required libraries     ########################
@@ -138,12 +140,12 @@ packages <-c("ade4","GUniFrac","phangorn","factoextra","cluster","fpc","dplyr","
 InsPack <- function(pack)
 {
   if ((pack %in% installed.packages()) == FALSE) {
-    install.packages(pack,repos ="http://cloud.r-project.org/")
+    install.packages(pack,repos ="http://cloud.r-project.org/",dependencies = TRUE)
   } 
 }
 
 if (("ade4" %in% installed.packages()) == FALSE) {
-  install.packages("ade4",repos ="http://cloud.r-project.org/")
+  install.packages("ade4",repos ="http://cloud.r-project.org/",dependencies = TRUE)
 } 
 
 # Applying the installation on the list of packages
@@ -356,6 +358,9 @@ if (ncol(taxonomy)!=0) {
     #---------------- Tree -----------------------#
     # Load the phylogenetic tree calculated from the OTU sequences 
     tree_file <- read.tree(input_tree_or_matrix)
+    
+    # Remove single quotes from the tips of the tree
+    tree_file$tip.label <- gsub("'", "", tree_file$tip.label)
     
     # Root the OTU tree at midpoint 
     rooted_tree <- midpoint(tree_file)
@@ -684,6 +689,12 @@ if(!flag) { stop("
                  Required libaries:ade4, GUniFrac, phangorn")
 }
 }
+
+# Remove unnecessary variables
+rm(list=ls()[!(ls()%in%ls)])
+# Clear the memory
+invisible(gc())
+
 #################################################################################
 ######                           End of Script                             ######
 #################################################################################

@@ -147,6 +147,9 @@ plot_type = "Boxplots"
 ############################################################ Main Script ###################################################################################
 ############################################################################################################################################################
 
+# Save the variables of the active working environment
+ls <- c("meta_file","otu_file","unifract_dist",ls())
+
 
 ##################  Create all the necessary paths and directories ###############
 
@@ -193,12 +196,12 @@ packages <- c("ade4","GUniFrac","phangorn","cluster","fpc","ggplot2","gridExtra"
 InsPack <- function(pack)
 {
   if ((pack %in% installed.packages()) == FALSE) {
-    install.packages(pack,repos ="http://cloud.r-project.org/")
+    install.packages(pack,repos ="http://cloud.r-project.org/",dependencies = TRUE)
   } 
 }
 
 if (("ade4" %in% installed.packages()) == FALSE) {
-  install.packages("ade4",repos ="http://cloud.r-project.org/")
+  install.packages("ade4",repos ="http://cloud.r-project.org/",dependencies = TRUE)
 } 
 
 # Applying the installation on the list of packages
@@ -207,7 +210,9 @@ lapply(packages, InsPack)
 if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
+if (("ggtree" %in% installed.packages()) == FALSE) {
 BiocManager::install("ggtree",update=FALSE,force = TRUE)
+}
 
 # Make the libraries
 lib <- lapply(packages, require, character.only = TRUE)
@@ -671,10 +676,8 @@ otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",
 otu_table <- otu_table[!apply(is.na(otu_table) | otu_table=="",1,all),,drop=FALSE]
 
 # Check if a column with taxonomy information exists
-taxonomy <- otu_table %>% select_if(is.factor)
-if (ncol(taxonomy)==0) {
-  taxonomy <-  otu_table %>% select_if(is.character)
-}
+taxonomy <- data.frame(otu_table %>% select_if(is.factor), otu_table %>% select_if(is.character))
+
 # Delete the taxonomy column (if exists)
 if (ncol(taxonomy)!=0) {
   otu_table[,colnames(taxonomy)] <- NULL
@@ -768,8 +771,9 @@ if (ncol(taxonomy)!=0) {
   if (tree_or_matrix=="tree") {
     # Load the phylogenetic tree calculated from the OTU sequences 
     tree_file <- read.tree(input_tree_or_matrix)
-    #tree_file <- keep.tip(tree_file,colnames(otu_file))
-    
+
+    # Remove single quotes from the tips of the tree
+    tree_file$tip.label <- gsub("'", "", tree_file$tip.label)
     
     # Root the OTU tree at midpoint 
     rooted_tree <- midpoint(tree_file)
@@ -790,7 +794,7 @@ if (ncol(taxonomy)!=0) {
   
   
   # index= 0 -> De novo clustering to the test groups will be performed
-  # index= 1 -> De novo clustering to the test groups will not be performed (The remaing procedures will be performed normally)
+  # index= 1 -> De novo clustering to the test groups will not be performed (The reaming procedures will be performed normally)
   index = 0
   
   
@@ -1282,7 +1286,7 @@ if (ncol(taxonomy)!=0) {
     if (index == 0 & any(Test_name != "None")) {
       denovo_clusters <- denovo_clusters[rownames(distances_matrix)]
       plot_matrix <- data.frame(as.factor(c(denovo_clusters)),distances_matrix)
-      } else {plot_matrix <- data.frame(as.factor(rep(0,nrow(distances_matrix))),distances_matrix)
+      } else { plot_matrix <- data.frame(as.factor(rep(0,nrow(distances_matrix))),distances_matrix)
       }
     # Add a column with the names of the clusters
     plot_matrix[meta_file[,mapping_column] %in% reference_name,(ncol(plot_matrix)+1)] <- paste(paste(reference_name,collapse="+"),plot_matrix[meta_file[,mapping_column]%in%reference_name,"Nearest.reference.cluster" ])
@@ -2424,7 +2428,7 @@ if (ncol(taxonomy)!=0) {
       
       
       #################################################
-      ########## Distsances-based report ##############
+      ########## Distances-based report ###############
       #################################################
       
       
@@ -2433,8 +2437,13 @@ if (ncol(taxonomy)!=0) {
       pointplot_list <- list()
       violinplot_list <- list()
       
+      if (index == 0 & any(Test_name != "None")) {
       # Open a PDF file to store the outputs
-      pdf("Distances-based report.pdf")
+      pdf("1.Distances-based report.pdf")
+      } else {
+        # Open a PDF file to store the outputs
+        pdf("Distances-based report.pdf") 
+      }
       
       
       
@@ -3514,7 +3523,7 @@ if (ncol(taxonomy)!=0) {
       
       
       # Open the PDF
-      pdf("De novo clustering report.pdf")
+      pdf("2.De novo clustering report.pdf")
       
       
       
@@ -4479,6 +4488,11 @@ if (ncol(taxonomy)!=0) {
     }
   }
 }
+
+# Remove unnecessary variables
+rm(list=ls()[!(ls()%in%ls)])
+# Clear the memory
+invisible(gc())
 
 ############################################################################################################################################################
 #############################################################       Script Ended         ###################################################################
