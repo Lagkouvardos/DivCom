@@ -22,20 +22,20 @@ setwd("D:/path/to/DivCom")
 
 
 # Check if required packages are already installed, and install if missing
-packages <-c("ade4","GUniFrac","phangorn","factoextra","cluster","fpc","dplyr",
-             "graphics","vegan","stats","data.table","caTools","gridExtra","grid","gtable","ggplot2","cowplot","tidyr",
-             "RColorBrewer","ggpubr","ggtree","tools") 
+packages <-c("ade4","ape","caTools","cluster","cowplot","data.table","dplyr","factoextra",
+             "fpc","ggplot2","ggpubr","ggtree","graphics","grid","gtable","gridExtra","lattice",
+             "GUniFrac","permute","phangorn","RColorBrewer","stats","tidyr","tools","vegan") 
 
 # Function to check whether the package is installed
 InsPack <- function(pack)
 {
   if ((pack %in% installed.packages()) == FALSE) {
-    install.packages(pack,repos = "http://cloud.r-project.org/")
+    install.packages(pack,repos = "http://cloud.r-project.org/",dependencies = TRUE)
   } 
 }
 
 if (("ade4" %in% installed.packages()) == FALSE) {
-  install.packages("ade4",repos ="http://cloud.r-project.org/")
+  install.packages("ade4",repos ="http://cloud.r-project.org/",dependencies = TRUE)
 } 
 
 # Applying the installation on the list of packages
@@ -44,7 +44,9 @@ lapply(packages, InsPack)
 if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
+if (("ggtree" %in% installed.packages()) == FALSE) {
 BiocManager::install("ggtree",update=FALSE,force = TRUE)
+}
 
 # Make the libraries
 lib <- lapply(packages, require, character.only = TRUE)

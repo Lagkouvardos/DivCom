@@ -1,6 +1,6 @@
 
 #'Script Title: DivCom 
-#'#'This script was last modified on 05/01/2022
+#'This script was last modified on 12/01/2022
 #'Authors: Evangelia Intze, Ilias Lagkouvardos
 #'
 #'
@@ -56,9 +56,13 @@
 ###########################################################################################################################################################
 
 
+#############################################################
+####### CHANGE THE FOLLOWING PRAMETERS ACCORDINGLY !!! ######
+#############################################################
+
 #' Please set the directory of the script as the working folder
 #' Note: the path is denoted by forward slash "/"
-setwd("C:/...../..../DivCom")  #<--- CHANGE ACCORDINGLY !!!
+setwd("C:/...../..../DivCom")  
 
 
 #' Please give the name of the OTUs or ASVs table
@@ -189,8 +193,9 @@ dir.create(paste0(results_path,"/",tables_folder))
 
 
 # Check if required packages are already installed, and install if missing
-packages <- c("ade4","GUniFrac","phangorn","cluster","fpc","ggplot2","gridExtra","grid","gtable","stats","cowplot",
-             "graphics","vegan", "dplyr","data.table","tidyr","caTools","RColorBrewer","ggpubr","ggtree","tools") 
+packages <- c("ade4","ape","caTools","cowplot","cluster","data.table","dplyr","fpc","ggplot2",
+              "ggpubr","ggtree","graphics","grid","gridExtra","gtable","lattice","GUniFrac",
+              "permute","phangorn","RColorBrewer","stats","tidyr","tools","vegan") 
 
 # Function to check whether the package is installed
 InsPack <- function(pack)
@@ -668,9 +673,6 @@ otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",
 if (ncol(otu_table)==0 | nrow(otu_table)==0){
   # Load the tab-delimited file containing the values to be checked (row names should be in the first column of the file)
   read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = ",", row.names = 1,comment.char = "")}
-
-# Load the tab-delimited file containing the values to be checked (row names should be in the first column of the file)
-otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
 
 # Clean table from empty lines
 otu_table <- otu_table[!apply(is.na(otu_table) | otu_table=="",1,all),,drop=FALSE]
@@ -2706,8 +2708,7 @@ if (ncol(taxonomy)!=0) {
                              "The distribution of the samples across the reference clusters is presented in Table(s) \nof the first line.\n\n",
                              "Table 2 presents the p-values of the Chi-square test of the observed distribution \nof the counts against the expected distribution if the counts were \nuniformly distributed.\n\n",
                              "Table 3 contains the p-values of the pairwise comparisons.\n\n",
-                             "The tables contain only the 10 most significant p-values. The rest of the p-values\n
-                           have been printed in the results folder.")
+                             "The tables contain only the 10 most significant p-values. The rest of the p-values \nhave been printed in the results folder.")
               
               # Create a text grob for the text
               tgrob2 <- text_grob(text,face = "italic", color = "Black",size=13)
@@ -3724,8 +3725,7 @@ if (ncol(taxonomy)!=0) {
             text2 <- paste0("The distribution of the samples across the clusters of the test group(s)\n is presented in Table 1.\n
                  Table 2 presents the p-values of the Chi-square test of the observed distribution \nof the counts across the clusters in comparison with the expected \ndistribution if the counts were uniformly distributed.\n
                  Table 3 contains the p-values of the pairwise comparisons.\n
-                 The tables contain only the 10 most significant p-values. The rest of the p-values\n
-                           have been printed in the results folder."
+                 The tables contain only the 10 most significant p-values. The rest of the p-values\nhave been printed in the results folder."
             )
             
             # Create a text grob for the text

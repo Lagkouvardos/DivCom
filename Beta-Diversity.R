@@ -1,6 +1,6 @@
 
 #' Script: Beta-Diversity
-#' #'This script was last modified on 05/01/2022
+#' #'This script was last modified on 12/01/2022
 
 #' Author: Ilias Lagkouvardos
 #' 
@@ -134,7 +134,9 @@ ls <- c("meta_file","otu_file","unifract_dist_all",ls())
 
 
 # Check if required packages are already installed, and install if missing
-packages <-c("ade4","GUniFrac","phangorn","factoextra","cluster","fpc","dplyr","graphics","vegan","stats","data.table","caTools","gridExtra","grid","gtable","tools") 
+packages <-c("ade4","ape","caTools","cluster","data.table","dplyr","factoextra","fpc",
+             "graphics","grid","gridExtra","gtable","lattice","GUniFrac","permute",
+             "phangorn","stats","tools","vegan") 
 
 # Function to check whether the package is installed
 InsPack <- function(pack)
@@ -256,18 +258,12 @@ if (ncol(otu_table)==0 | nrow(otu_table)==0){
   otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = ",", row.names = 1,comment.char = "")
 }
 
-
-# Load the tab-delimited file containing the values to be checked (row names in the first column)
-otu_table <-  read.table (input_otu,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
-
 # Clean table from empty lines
 otu_table <- otu_table[!apply(is.na(otu_table) | otu_table=="",1,all),, drop = FALSE]
 
-# Check if exists a column with taxonomy information
-taxonomy <- otu_table %>% select_if(is.factor)
-if (ncol(taxonomy)==0) {
-  taxonomy <-  otu_table %>% select_if(is.character)
-}
+# Check if a column with taxonomy information exists
+taxonomy <- data.frame(otu_table %>% select_if(is.factor), otu_table %>% select_if(is.character))
+
 # Delete the taxonomy column (if exists)
 if (ncol(taxonomy)!=0) {
   otu_table[,colnames(taxonomy)] <- NULL
