@@ -1411,16 +1411,6 @@ if (ncol(taxonomy)!=0) {
     
     #------------------ Reference Group ---------------------#
     
-    
-    # Index whether the Descriptive statistics will be calculated 
-    stats <- "NO"
-    
-    # Statistics will be calculated in case that the reference sample are more than the clusters
-    if (sum(meta_file[,mapping_column] %in% reference_name) > 3*reference_clusters) {
-      
-      # Index whether the Descriptive statistics will be calculated 
-      stats <- "YES"
-      
       # Ordering all the distances
       ordered_distance <- data.frame(minimum_reference_distance[order(minimum_reference_distance)])
       
@@ -1570,9 +1560,6 @@ if (ncol(taxonomy)!=0) {
       
       #---------------------------------#
       
-    }  
-    
-    
     
     # Create a new vector that contains "YES" and "NO" 
     # YES indicates that the sample compared to all the other reference samples(except outliers) of the same cluster, is the most distant object 
@@ -1601,9 +1588,7 @@ if (ncol(taxonomy)!=0) {
       colnames(distances_matrix) <- c(paste("Distance Medoid",1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster","Most distant object" )
     }
     
-    
-    
-    
+    # Calculate the median distances of each test cluster from the reference clusters
     median_distances <- data.frame()
     for(j in 1:reference_clusters){
       median_distances[1,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% reference_name,, drop = FALSE]),j])
@@ -1818,7 +1803,6 @@ if (ncol(taxonomy)!=0) {
         
       }
     }
-    
     
     
     
