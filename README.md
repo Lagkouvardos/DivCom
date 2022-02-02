@@ -3,21 +3,23 @@
 
 
 ## Introduction
-When analyzing microbiome data, one of the main objectives is to effectively compare the microbial profiles of samples belonging to different groups. The visual representation of the dataset, usually in the form of a PCoA plot, in conjunction with the results obtained from a suitable statistical test, typically provides us with all the necessary information to draw conclusions about the overall similarity or dissimilarity of the observed microbial communities. However, this approach can lead us to misleading assumptions. To address those issues, we developed Divide and Compare (DivCom), an automated R-based tool for advanced beta diversity analysis. The main advantage of DivCom is that it does not rely only on the visual representation of the data or the results of the statistical tests. Instead, it takes into consideration the substructure of the data and uses beta diversity measures as distances metrics. Firstly, DivCom attempts to reveal the inner structure of the control group by dividing their samples into the appropriate number of subgroups. Then the program selects the most representative points of each cluster and calculates the distances of the profiles belonging to the test groups to those reference points. Finally, for each sample, the closest representative point is reported and stored. In this way, all the individual points are compared only with samples that are relative to them. As an extra layer to the DivCom analysis, the program also applies de novo clustering to the test groups.   
+When analyzing microbiome data, one of the main objectives is to effectively compare the microbial profiles of samples belonging to different groups. The visual representation of the dataset, usually in the form of a PCoA plot, in conjunction with the results obtained from a suitable statistical test, typically provides us with all the necessary information to draw conclusions about the overall similarity or dissimilarity of the observed microbial communities. However, this approach can lead us to misleading assumptions. To address these issues, we developed Divide and Compare (DivCom), an automated R-based tool for advanced beta diversity analysis. The main advantage of DivCom is that it does not rely only on the visual representation of the data or the results of the statistical tests. Instead, it takes into consideration the substructure of the data and uses beta diversity measures as distances metrics. Firstly, DivCom attempts to reveal the inner structure of the control group by dividing their samples into the appropriate number of subgroups. Then the program selects the most representative points of each cluster and calculates the distances of the profiles belonging to the test groups to those reference points. Finally, for each sample, the closest representative point is reported and stored. In this way, all the individual points are compared only with samples that are relative to them. As an extra layer to the DivCom analysis, the program also applies de novo clustering to the test groups.   
 
 ## Description
 
 ### Organization
-DivCom consists of two scripts:
+The DivCom tool consists of two scripts:
 
 1.	Beta-Diversity
 2.	DivCom
 
-The first script that the user should run is named 'Optimal Number of Clusters'. Its purpose is to provide all the necessary information about the number of clusters of each group. This information will be used in the 'Distances' script, which is the main script of the program that applies the proposed methodology. Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
-
-The pre-processing of the raw sequencing data through the [IMNGS](https://www.imngs.org/ "IMNGS download site") platform can provide the user with the necessary input files for the DivCom. Also, the  outputs derived from the [Rhea](https://github.com/Lagkouvardos/Rhea/ "Rhea download site") pipeline have the appropriate form to be used as inputs to the DivCom.
+The first and optional script is named 'Beta-Diversity' , its purpose is to provide all the necessary information about the number of clusters that each group should be partitioned. This information can be used in the 'DivCom' script, which is the main script of the program that applies the proposed methodology.
 
 A detailed README file is provided for each of the scripts. In these files, the procedures followed by the program are described, and all the requirements are specified.
+
+Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
+
+The pre-processing of the raw sequencing data through the [IMNGS](https://www.imngs.org/ "IMNGS download site") platform can provide the user with the necessary input files for the DivCom. Also, the  outputs derived from the [Rhea](https://github.com/Lagkouvardos/Rhea/ "Rhea download site") pipeline have the appropriate form to be used as inputs to the DivCom.
 
 
 ### Script structure
@@ -28,9 +30,7 @@ The general rule that applies is that the lines concerning the Commentary and In
 #### Commentary section
 This section is always positioned at the beginning of each script and holds comment lines explaining the script's tasks and concept, the required input files, and the expected outputs. These lines are only for informational purposes, and they do not add any functionality to the script. Therefore, it is recommended that the user read this brief introduction and then proceed to the next stage of the program. An example of those comments can be seen below:
 
-
  
-       #'This script was last modified on 21/11/2021
        #'Script Task: 
        #'
        #' The script performs de novo clustering of the groups and then calculate the distances from 
@@ -69,7 +69,7 @@ All the required and optional parameters necessary for executing the scripts are
 	
        #' Please set the directory of the script as the working folder 
        #' Note: the path is denoted by forward slash "/"
-       setwd("C:/...../..../Distances") 
+       setwd("C:/...../..../DivCom") 
 
 
        #' Please give the name of the OTUs or ASVs table
