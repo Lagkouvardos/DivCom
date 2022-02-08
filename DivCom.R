@@ -65,7 +65,7 @@
 setwd("C:/...../..../DivCom")  
 
 
-#' Please give the name of the OTUs or ASVs table
+#' Please give the name of the OTUs or ASVs table (Accepted Formats: txt, tab, csv, tsv) 
 input_otu = "OTUs-Table.tab" 
 
 
@@ -81,12 +81,12 @@ normalized = "NO"
 tree_or_matrix =  "tree" 
 
 
-#' Please insert the name of the distances matrix or the anme of the phylogenetic tree 
+#' Please insert the name of the distances matrix or the anme of the phylogenetic tree (Accepted Formats: tre or nwk)
 #' -> -> !!! In case you will choose the "mean" or "median" option you HAVE TO provide a phylogenetic tree !!! <- <-
 input_tree_or_matrix = "OTUs-NJTree.tre"  
 
 
-#' Please give the name of the mapping file which contains the labels of the samples
+#' Please give the name of the mapping file which contains the labels of the samples (Accepted Formats: txt, tab, csv, tsv)
 #' !! CAUTION: The rows of the mapping file should have the same sample names as the OTUs table !!
 input_meta = "mapping_file.tab"
 
@@ -96,7 +96,7 @@ mapping_column = "Condition"
 
 
 #' Please place in the vector one or more names which will be used to identify the samples that compose
-#'         the REFERENCE group (e.g reference_name <- c("group_a","group_b"))
+#'         the REFERENCE group (e.g reference_name = c("group_a","group_b"))
 #' -> -> !!! CAUTION: You should provide at least one name!!! <- <-
 reference_name = c("NI")
 
@@ -143,7 +143,7 @@ plot_type = "Boxplots"
 
 
 #################################################################################################################################################################
-################################################# DO NOT CHANGE ANYTHING BELOW THIS LINE #################################################################################
+################################################# DO NOT CHANGE ANYTHING BELOW THIS LINE ########################################################################
 #################################################################################################################################################################
 
 
@@ -298,7 +298,7 @@ mytheme <- gridExtra::ttheme_default(
 )
 
 #----------------------------------------------------------------------------#
-#************************ Fuction for gTables *******************************#
+#************************ Function for gTables *******************************#
 #----------------------------------------------------------------------------#
 
 # title -> title of the table
@@ -1255,9 +1255,9 @@ if (ncol(taxonomy)!=0) {
     if (any(Test_name != "None")){
       self_distance <- c(as.numeric(unifract_dist[self_pam,1:sum(meta_file[,mapping_column] %in% reference_name)]),
                          as.numeric(apply(distances_matrix[(sum(meta_file[,mapping_column] %in% reference_name)+1):length(clusters),],1,function(x) x[as.numeric(x[(clusters_number+1)])])))
-      } else{
-                           self_distance <- c(as.numeric(unifract_dist[self_pam,1:sum(meta_file[,mapping_column] %in% reference_name)]))
-                         }
+      } else {
+        self_distance <- c(as.numeric(unifract_dist[self_pam,1:sum(meta_file[,mapping_column] %in% reference_name)]))
+        }
     #----------------------------------#
     
     
@@ -3029,7 +3029,7 @@ if (ncol(taxonomy)!=0) {
                       expected <- data.frame(cbind(c(exp_col,exp_r),adjustb))
                       colnames(expected) <- c( "P-values","Adj p-values")
                       
-                    }else{
+                    } else {
                       
                       # Performing fdr correction
                       adjustb <- round(p.adjust(c(exp_col), method = "BH"),4)
@@ -3174,7 +3174,7 @@ if (ncol(taxonomy)!=0) {
                       grid.arrange(tgrob,gtableGrob("Counts per Cluster (Table 1)",chi_matrix,setDT="YES",size=12),
                                    arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
                                    nrow = 3,heights=c(0.4,1,2))
-                    } else{
+                    } else {
                       text1 <- paste(exploratory_columns[k],"-",Test_name[i])
                       
                       # Create a text grob for the title
@@ -3191,7 +3191,7 @@ if (ncol(taxonomy)!=0) {
                     }
                   }
                   
-                }else {
+                } else {
                   # Tile of the page
                   text1 <- paste0("'",exploratory_columns[k],"' Column")
                   
@@ -3382,7 +3382,7 @@ if (ncol(taxonomy)!=0) {
           pvaluesb <- pvaluesb[order(pvaluesb[,2]),]
           # Choose the first 10 most significant p-values
           if (nrow(pvaluesb)>10){ pvaluesb2 <- pvaluesb[1:10,] } else { pvaluesb2 <- pvaluesb }
-        }else {
+        } else {
           pvaluesb2 <- pvaluesb
           }
         
@@ -3419,7 +3419,7 @@ if (ncol(taxonomy)!=0) {
           
           if (length(Test_name)<5){
             
-            for(group in 1:length((Test_name))) { 
+            for (group in 1:length((Test_name))) { 
               # Subset the samples of each test group
               temporary <- plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]
               # Write how many samples of each test group is closer to every reference cluster
@@ -3565,14 +3565,14 @@ if (ncol(taxonomy)!=0) {
       }
       
       # Information about the de novo clustering of test groups
-      for(i in 1:length(levels)) {
+      for (i in 1:length(levels)) {
         clustering_text <- paste(clustering_text,"\n", "The",levels[i] ,"group was clustered into",test_clusters[i],"groups:\n" )
-        # Vector where the propabilities will be placed
+        # Vector where the probabilities will be placed
         propability <- c()
         # Vector where the number of samples will be placed
         number_samples <- c()
         
-        for(j in 1:test_clusters[i]) {
+        for (j in 1:test_clusters[i]) {
           clustering_text <- paste(clustering_text,levels[i],j,"has", length(which(denovo_clusters==paste(levels[i],j))),"samples.\n")
           if (test_clusters[i] > 1) {
             number_samples <- c(number_samples,length(which(denovo_clusters==paste(levels[i],j))))
@@ -3667,7 +3667,7 @@ if (ncol(taxonomy)!=0) {
       
       ############### Page 5-(undefined) ##########
       
-      if(chi_square == 1){
+      if (chi_square == 1){
         
         # Index indicating the page of the report
         page <- page+1
@@ -3725,7 +3725,7 @@ if (ncol(taxonomy)!=0) {
             grid.arrange(tgrob,tgrob2,tgrob3 ,nrow=3)
             
             # Calculate the chi-square p-values for every test group
-            for(i in 1:length(Test_name)){
+            for (i in 1:length(Test_name)){
               
               # Index indicating the page of the report
               page <- page+1
@@ -3800,7 +3800,7 @@ if (ncol(taxonomy)!=0) {
                   
                   # chi_p_value -> a vector where the p values will be stored
                   chi_p_value <- c(); test <- c()
-                  for(chi in 1:nrow(combs)) { 
+                  for (chi in 1:nrow(combs)) { 
                     # Performed the Chi square test
                     chi_p_value[chi] <- round(chisq.test(chi_matrix[,combs[chi,2]],p=chi_matrix[,combs[chi,1]],rescale.p = TRUE)$p.value,4)
                   }
@@ -3815,7 +3815,7 @@ if (ncol(taxonomy)!=0) {
                   
                   # chi_p_value -> a vector where the p values will be stored
                   chi_p_value_rows <- c(); test <- c()
-                  for(chi in 1:nrow(combs)) { 
+                  for (chi in 1:nrow(combs)) { 
                     # Performed the Chi square test
                     chi_p_value_rows[chi] <- round(chisq.test(as.numeric(chi_matrix[combs[chi,2],]),p=as.numeric(chi_matrix[combs[chi,1],]),rescale.p = TRUE)$p.value,4)
                   }

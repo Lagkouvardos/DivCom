@@ -229,7 +229,7 @@ if (ncol(meta_file)==0 | nrow(meta_file)==0){
 
 
 # Clean table from empty lines
-meta_file <- data.frame(meta_file[!apply(is.na(meta_file) | meta_file=="",1,all),])
+meta_file <- data.frame(meta_file[!apply(is.na(meta_file) | meta_file=="",1,all),, drop = FALSE])
 
 # Order meta file
 if (ncol(meta_file)==1){
