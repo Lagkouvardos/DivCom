@@ -114,7 +114,6 @@ Test_name = c("IBD")
 
 
 #' OPTIONAL-  Please insert the desired number of clusters for every test group (e.g test_clusters= c(3,2))
-#' -> -> !! CAUTION: The number of clusters should be more than one !! <- <-
 #' If you do not wish to perform de novo clustering to the test groups just insert an empty vector  (e.g test_clusters= c())
 test_clusters = c(2)
 
@@ -803,7 +802,7 @@ if (ncol(taxonomy)!=0) {
    #------------- Perform all the necessary checks ---------------# 
   
   # Check if has been provided the information about the desired number of clusters for the test groups
-  if (length(test_clusters) == 0 | all(Test_name == "None") | any(test_clusters == 1)) {test_clusters <- c()
+  if (length(test_clusters) == 0 | all(Test_name == "None")) {test_clusters <- c()
   index <- 1}
   
   
@@ -832,6 +831,9 @@ if (ncol(taxonomy)!=0) {
     chi_square <- 1
   } else { chi_square <- 0 
   }
+  
+  # Check if all test_clusters are equal to 1
+  if (all(test_clusters==1)) {chi_square <- 0}
  #--------------------------------------------------------------#
   
   
@@ -2928,9 +2930,9 @@ if (ncol(taxonomy)!=0) {
                     if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
                     
                     # Write Reference counts table at result folder
-                    write_table(paste0("DiBaAn-page ",page,reference_name," Group (Table 1).tab"),chi_ref,"table")
+                    write_table(paste0("DiBaAn-page ",page," ",reference_name," Group (Table 1).tab"),chi_ref,"table")
                     # Write test counts table at result folder
-                    write_table(paste0("DiBaAn-page ",page,Test_name[i]," Group (Table 2).tab"),chi_test,"table")
+                    write_table(paste0("DiBaAn-page ",page," ",Test_name[i]," Group (Table 2).tab"),chi_test,"table")
                     # Write Expected-observed p-values at result folder
                     write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
                     # Write pairwise p-values at result folder
@@ -3727,6 +3729,8 @@ if (ncol(taxonomy)!=0) {
             # Calculate the chi-square p-values for every test group
             for (i in 1:length(Test_name)){
               
+              if (test_clusters[i] > 1) {
+              
               # Index indicating the page of the report
               page <- page+1
               
@@ -3953,7 +3957,8 @@ if (ncol(taxonomy)!=0) {
                 
                 # Arrange in the grid the above elements
                 grid.arrange(tgrob,tgrob2 ,nrow=2)
-              }  
+              }
+            }  
             }
             
           } else {
