@@ -135,7 +135,7 @@ ls <- c("meta_file","otu_file","unifract_dist_all",ls())
 
 # Check if required packages are already installed, and install if missing
 packages <-c("ade4","ape","caTools","cluster","data.table","dplyr","factoextra","fpc",
-             "graphics","grid","gridExtra","gtable","lattice","GUniFrac","permute",
+             "graphics","grid","gridExtra","gtable","lattice","GUniFrac","mclust","permute",
              "phangorn","stats","tools","vegan") 
 
 # Function to check whether the package is installed
@@ -642,6 +642,8 @@ if (i==1){
   # Calculate Within sum of squares
   wss <- fviz_nbclust(otu_file[meta_file[,mapping_column]%in% group,] ,diss=unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group], k.max = kmers_limit  ,cluster::pam, method =  "wss")
   
+  # Perform Model-based clustering 
+  mclust <-  Mclust(data = as.dist(unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group]),  modelNames = c("EII","VII","EEI","EVI","VEI","VVI") , verbose = F)
  
   
 #################################################################################
@@ -659,6 +661,9 @@ if (i==1){
   # Plot WSS plot
   plot(1:kmers_limit,wss[["data"]][["y"]], type="b", xlab="k clusters", ylab="Within sum of squares",main=paste0("'",name,"'"," Optimal number of clusters(WSS)"),pch=19)
  
+  # plot BIC values of the mclust
+  plot(mclust,what="BIC",main=T)
+  title(main=paste0("'",name,"'"," BIC values"))
   
   dev.off()
   
