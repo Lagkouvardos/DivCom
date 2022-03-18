@@ -101,6 +101,10 @@ mapping_column = "Condition"
 reference_name = c("NI")
 
 #' Please insert the desired number of clusters for the reference group  
+#' There are two options: a User-defined number and "Automated"
+#' 1) User-defined number  --> Insert the desired number of clusters (e.g reference_clusters = 2)
+#' 2) "Automated"          --> Insert "Automated" in case you wish the program to estimate the optimal number of clusters 
+#'                             based on the Calinski-Harabasz index
 #' -> -> CAUTION: You have to provide this information <- <-
 reference_clusters = 2
 
@@ -113,13 +117,17 @@ reference_clusters = 2
 Test_name = c("IBD")
 
 
-#' OPTIONAL-  Please insert the desired number of clusters for every test group (e.g test_clusters= c(3,2))
-#' If you do not wish to perform de novo clustering to the test groups just insert an empty vector  (e.g test_clusters= c())
-test_clusters = c(2)
+#' OPTIONAL-  Please insert the desired number of clusters for every test group
+#' There are two options: a User-defined vector and "Automated"
+#' 1) User-defined number  --> Form a vector with the the desired number of clusters for every test group (e.g test_clusters= c(3,2))
+#'                             !! CAUTION: In this case the number of clusters should be more than one !!
+#' 2) "Automated"          --> Insert "Automated" in case you wish the program to estimate the optimal number of clusters for each 
+#'                             test group based on the Calinski-Harabasz index
+#' If you do not wish to perform de novo clustering to the test groups insert an empty vector  (e.g test_clusters= c())
+test_clusters = "Automated"
 
 
 #' OPTIONAL- Please insert the names of the columns of the mapping file you wish to analyze against the de novo clusters 
-#' -> -> !! CAUTION: The columns must contain categorical variables; if that is not the case, the analysis will NOT be conducted!! <- <- 
 exploratory_columns = c("Iron_Time","Disease_Time_NI")
 
 
@@ -153,37 +161,11 @@ plot_type = "Boxplots"
 # Save the variables of the active working environment
 ls <- c("meta_file","otu_file","unifract_dist",ls())
 
-
-##################  Create all the necessary paths and directories ###############
-
 # Save the current path in one variable (will be used later)
 OriginalPath   <- getwd()
 
-# Create the directory where all output files will be saved 
-outputs_folder <- paste0(mapping_column,"-",paste(reference_name,collapse="+"),"-",reference_clusters," (",paste(Test_name,collapse="+"),")")
-outputs_path   <- paste0(OriginalPath,"/",outputs_folder)
-dir.create(outputs_folder)
-
-# Path and Directory where the results will be stored
-results_folder <- paste0("results","-",paste(reference_name,collapse="+"),"-",reference_clusters)
-results_path   <- paste0(outputs_path,"/",results_folder)
-dir.create(paste0(outputs_path,"/",results_folder))
-
-# Path and Directory where the p-values will be stored
-pvalues_folder <- paste0("P-values","-",paste(reference_name,collapse="+"),"-",reference_clusters)
-pvalues_path   <- paste0(results_path,"/",pvalues_folder)
-dir.create(paste0(results_path,"/",pvalues_folder))
-
-# Path and Directory where the plots will be stored
-plots_folder   <- paste0("Plots","-",paste(reference_name,collapse="+"),"-",reference_clusters)
-plots_path     <- paste0(results_path,"/",plots_folder)
-dir.create(paste0(results_path,"/",plots_folder))
-
-# Path and Directory where the rest tables will be stored
-tables_folder  <- paste0("Tables","-",paste(reference_name,collapse="+"),"-",reference_clusters)
-tables_path    <- paste0(results_path,"/",tables_folder)
-dir.create(paste0(results_path,"/",tables_folder))
-
+# Disable printing the results in scientific notation
+options(scipen=999)
 
 
 ############################################################################################################################################################
@@ -193,7 +175,7 @@ dir.create(paste0(results_path,"/",tables_folder))
 
 # Check if required packages are already installed, and install if missing
 packages <- c("ade4","ape","caTools","cowplot","cluster","data.table","dplyr","fpc","ggplot2",
-              "ggpubr","ggtree","graphics","grid","gridExtra","gtable","lattice","GUniFrac",
+              "ggpubr","ggtree","graphics","grid","gridExtra","gtable","lattice","GUniFrac","mclust",
               "permute","phangorn","RColorBrewer","stats","tidyr","tools","vegan") 
 
 # Function to check whether the package is installed
@@ -215,7 +197,7 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
 if (("ggtree" %in% installed.packages()) == FALSE) {
-BiocManager::install("ggtree",update=FALSE,force = TRUE)
+  BiocManager::install("ggtree",update=FALSE,force = TRUE)
 }
 
 # Make the libraries
@@ -229,8 +211,6 @@ flag <- all(as.logical(lib))
 #################################################  Functions that will be used in main Script. ############################################################
 ###########################################################################################################################################################
 
-# Disable printing the results in scientific notation
-options(scipen=999)
 
 #----------------------------------------------------------------------------#
 #************** Function that saves plots in png format *********************#
@@ -278,7 +258,7 @@ write_table <- function(name, table,folder){
 }
 
 ##############################################################################
-#*************** Necessary functions for the plots **************************#
+################ Necessary functions for the plots ###########################
 ##############################################################################
 
 
@@ -286,16 +266,17 @@ write_table <- function(name, table,folder){
 #------------ Theme of Gtables ---------------#
 
 # Set the theme to change text for plotting (ggplot - Gtable)
-mytheme <- gridExtra::ttheme_default(
+mytheme <- function(text_size)
+{gridExtra::ttheme_default(
   
   # Adjust settings for the text inside table
-  core = list(fg_params = list(cex = 0.8)),
+  core = list(fg_params = list(cex = text_size)),
   
   # Adjust the test for column and row header
   colhead = list(fg_params = list(cex = 0.85)),
   rowhead = list(fg_params = list(cex = 0.85))
 )
-
+}
 #----------------------------------------------------------------------------#
 #************************ Function for gTables *******************************#
 #----------------------------------------------------------------------------#
@@ -307,13 +288,49 @@ mytheme <- gridExtra::ttheme_default(
 
 gtableGrob <- function(title,table,setDT,size){
   
+  #---Calculate the size of the text---#
+  
+  # Vector where the number of characters will be strored
+  character <- c()
+  
+  if (nrow(table) > 1){
+    
+    if (setDT == "YES"){
+      # Calculate the number of characters for each rowname
+      for (i in 1:nrow(table)) {
+        character[i] <- sum(nchar(rownames(table[i,])))
+      }
+      max <- max(character)[1]
+      if (max<25){
+        text_size <- 0.8
+      } else {
+        diff <- ((max+12)-20)/100
+        text_size <- 0.8-diff
+      }
+      # Calculate the number of characters for the first column for each row
+    } else {
+      for (i in 1:nrow(table)) {
+        character[i] <- sum(nchar(table[i,1]))
+      }
+      max <- max(character)[1]
+      if (max<25){
+        text_size <- 0.8
+      } else {
+        diff <- ((max+12)-20)/100
+        text_size <- 0.8-diff
+      }
+    }
+  } else {
+    text_size <- 0.8
+  }
+  
   if (setDT=="NO"){
     # Create the Grob object
-    pvaltable <- tableGrob(table,rows = NULL ,theme = mytheme)
-    } else {
-      # Create the Grob object
-      pvaltable <- tableGrob(setDT(table, keep.rownames = "")[],rows = NULL,theme = mytheme)
-    }
+    pvaltable <- tableGrob(table,rows = NULL ,theme = mytheme(text_size))
+  } else {
+    # Create the Grob object
+    pvaltable <- tableGrob(setDT(table, keep.rownames = "")[],rows = NULL,theme = mytheme(text_size))
+  }
   
   # Title of tables 
   title <- textGrob(title,gp = gpar(fontsize = size))
@@ -363,7 +380,7 @@ prevalence <- function(dist, column) {
 #   report    -> "DeBaAn" or "DeNoAn"  
 #    page     -> In which page of the final report this table will be placed
 
-pvalues_function <- function(dist_matrix,report,page){
+pvalues_function <- function(dist_matrix,report,page,table=""){
   
   # Find all the available pairwise combinations
   combinations <- combs(levels(as.factor(dist_matrix[,1])), 2)
@@ -394,7 +411,7 @@ pvalues_function <- function(dist_matrix,report,page){
   colnames(pvalues) <- c("Groups","p-value","Adj. p-value")
   
   # Save all the p-values in table format
-  write_table(paste0(report," page ",page," Wilcoxon p-values.tab"),pvalues,"pvalues")
+  write_table(paste0(report,"page ",page," Wilcoxon p-values",table,".tab"),pvalues,"pvalues")
   
   # Convert p-values column into numeric
   pvalues[,2] <- as.numeric(pvalues[,2])
@@ -453,7 +470,7 @@ pvalues_function2 <- function(dist_matrix,reference_clusters,report,page){
   colnames(pvalues) <- c("Groups","p-value","Adj. p-value")
   
   # Save all the p-values in table format
-  write_table(paste0(report," page ",page," Wilcoxon p-values.tab"),pvalues,"pvalues")
+  write_table(paste0(report,"page ",page," Wilcoxon p-values.tab"),pvalues,"pvalues")
   
   # Convert p-values column into numeric
   pvalues[,2] <- as.numeric(pvalues[,2])
@@ -568,7 +585,7 @@ sclass <- function(distance,groups,individuals=NULL,col) {
 #------------------------------------------------------------------------------#
 #********** Functions that generate boxplots, violinplots, pointplots *********#
 #------------------------------------------------------------------------------#
-  
+
 # name      -> The name will be used as the title for the plots
 # plot_df   -> data frame containing the distances and the names
 # label     -> name of the column of plot_df containing the names of the boxplots
@@ -618,6 +635,79 @@ my_point_boxplot <- function(name,plot_df,label,abundance,colour=NULL){
                                                                                                           axis.text.y = element_text(colour = "grey20",size = 7,angle = 0,hjust = 1,vjust = 0,face = "plain"),axis.title.y = element_text(colour = "grey20",size = 14,angle = 90,hjust = .5,vjust = .5,face = "plain"),
                                                                                                           plot.title = element_text(colour = "grey22",size = 15,hjust = .5,vjust = .5,face = "bold")) + theme(plot.margin=unit(c(1,1,1.5,1.2),"cm"))
 }
+
+
+###########################################################################################################
+########################### Function for the optimal number of clusters ###################################
+###########################################################################################################
+
+
+#----------------------------------------------------------------------------#
+#******** Function that calculates the optimal number of clusters ***********#
+#----------------------------------------------------------------------------#
+
+# unifract_dist -> A distance matrix that will be used to calculate the Calinski-Harabasz indices
+
+optimal_k<- function(unifract_dist){
+  
+  # Vector where the indices will be stored
+  calinski_harabasz_values <-c()
+  
+  # Check if the number of samples are nine or more
+  if (nrow(unifract_dist) > 9) {
+    # Maximum number of clusters
+    max_cl =9
+  } else {
+    # Maximum number of clusters
+    max_cl = nrow(unifract_dist)
+  }
+  
+  # Calculate Calinski-Harabasz index
+  for (k in 2:max_cl){
+    clustering_results = as.vector(pam(as.dist(unifract_dist), k, diss=TRUE)$clustering)
+    calinski_harabasz_values= c(calinski_harabasz_values,(cluster.stats(unifract_dist,clustering_results)[["ch"]]))
+  }
+  
+  # Create a geometric progression sequence of numbers
+  geom_pr <- c(1*1.025**seq(0,(max_cl-2),by=1))
+  # Adjust the Calinski-Harabasz indices based on the geometric progression sequence of numbers
+  ch_adj <- calinski_harabasz_values/geom_pr
+  
+  # Check if the the biggest CH index in the last one
+  if (which.max(ch_adj)== (max_cl-1)){
+    # Choose the optimal number of clusters
+    k <-  which.max(ch_adj)+1
+  } else {
+    # Number of iterations  
+    i <- 0
+    continue <- 1
+    # The calculation will stop when continue <- 0
+    while (continue==1){
+      # Calculate the difference between the biggest CH index and the next CH value
+      diff <- c(calinski_harabasz_values[which.max(ch_adj)+1+i]-calinski_harabasz_values[which.max(ch_adj)+i],calinski_harabasz_values[which.max(ch_adj)+2+i]-calinski_harabasz_values[which.max(ch_adj)+1+i])
+      # Check if the differnce is greater than the 15% of the biggest value
+      if (diff[1]<0 & abs(diff[1]) < abs(diff[2]) & (calinski_harabasz_values[which.max(ch_adj)+i]-calinski_harabasz_values[which.max(ch_adj)+ 1+i])/calinski_harabasz_values[which.max(ch_adj)] < 0.15) {
+        # Choose the optimal number of clusters
+        k <- which.max(ch_adj)+2+i
+        i <- i+1
+        continue <- 1
+      } else  {
+        # Choose the optimal number of clusters
+        k <-  which.max(ch_adj)+1+i
+        # Stop the iteration
+        continue <- 0
+      }
+    }
+  }
+  
+  # Perform model-based clustering to determine if the optimal number of clusters is 1
+  mclust <-  Mclust(data = as.dist(unifract_dist),G = c(1,k),  modelNames = c("EII","VII","EEI","EVI","VEI","VVI") , verbose = F)$G
+  if (mclust==1){ k <- 1 }
+  
+  # Return the optimal number of clusters
+  return (list(k,calinski_harabasz_values))
+}
+
 
 
 ###########################################################################################################################################################
@@ -772,7 +862,7 @@ if (ncol(taxonomy)!=0) {
   if (tree_or_matrix=="tree") {
     # Load the phylogenetic tree calculated from the OTU sequences 
     tree_file <- read.tree(input_tree_or_matrix)
-
+    
     # Remove single quotes from the tips of the tree
     tree_file$tip.label <- gsub("'", "", tree_file$tip.label)
     
@@ -799,12 +889,11 @@ if (ncol(taxonomy)!=0) {
   index = 0
   
   
-   #------------- Perform all the necessary checks ---------------# 
+  #------------- Perform all the necessary checks ---------------# 
   
   # Check if has been provided the information about the desired number of clusters for the test groups
   if (length(test_clusters) == 0 | all(Test_name == "None")) {test_clusters <- c()
   index <- 1}
-  
   
   #  Check if the names of the test groups have been provided, if not Test_name = "None"
   if (length(Test_name) == 0 | length(levels) == 0) {Test_name <- "None"
@@ -817,7 +906,7 @@ if (ncol(taxonomy)!=0) {
   index <- 1}
   
   # Check if the number of the given test clusters is equal to the number of the test groups
-  if (length(test_clusters )!= length(Test_name)) {test_clusters <- c()
+  if (test_clusters!="Automated" & length(test_clusters )!= length(Test_name)) {test_clusters <- c()
   index <- 1}
   
   # Check if a phylogenetic tree has been provided when the user chose the "mean" or "median" option
@@ -826,15 +915,52 @@ if (ncol(taxonomy)!=0) {
   # Check if the tree_or_matrix and input_tree_or_matrix are consistent to each other
   if ( file_ext(input_tree_or_matrix) == "nwk" | file_ext(input_tree_or_matrix) == "tre"){tree_or_matrix = "tree"}
   
+  
+  # chi_square= 0 -> Chi square analysis will be performed
+  # chi_square= 1 -> Chi square analysis will not be performed (The reaming procedures will be performed normally)
+  
+  # Remove columns names that are not presents in the mapping file
+  if(length(exploratory_columns)>0){
+    for (e in 1:length(exploratory_columns)) {
+      if (exploratory_columns[e] %in% colnames(meta_file)){
+        exploratory_columns <- exploratory_columns
+      } else {
+        exploratory_columns <- exploratory_columns[-e]
+      }
+    }
+  }
+  
   # Check if the the names of the exploratory_column are present in the mapping file
   if (all(exploratory_columns %in% colnames(meta_file)) == TRUE & length(exploratory_columns) >= 1){
     chi_square <- 1
-  } else { chi_square <- 0 
-  }
+  } else { chi_square <- 0 }
+  
+  
+  # denovo_chi_square= 0 -> Chi square analysis to the test clusters will be performed
+  # denovo_chi_square= 1 -> Chi square analysis to the test clusters will not be performed (The reaming procedures will be performed normally)
   
   # Check if all test_clusters are equal to 1
-  if (all(test_clusters==1)) {chi_square <- 0}
- #--------------------------------------------------------------#
+  if (all(test_clusters==1)) {denovo_chi_square <- 0
+  } else {
+    denovo_chi_square <- 1
+  }
+  
+  # Check if the number of clusters for the test groups will be calculated automatically 
+  if (test_clusters=="Automated") {
+    test_clusters <- c()
+    test_clusters_in <- "Automated"
+  } else {
+    test_clusters_in <- "Manually"
+  }
+  
+  # Check if the number of clusters for the reference group will be calculated automatically 
+  if (reference_clusters=="Automated") {
+    reference_clusters_in <- "Automated"
+  } else {
+    reference_clusters_in <- "Manually"
+  }
+  
+  #--------------------------------------------------------------#
   
   
   #------- OTUs and mapping file preparation ---------#
@@ -855,10 +981,9 @@ if (ncol(taxonomy)!=0) {
   
   #------------- Additional Checking ---------------#
   # Check if it is meaningful to continue the procedure
-  { if (sum(meta_file[,mapping_column] %in% reference_name) < reference_clusters) 
-    stop("The number of the reference samples are less than the number of clusters!")
-    if (all(is.na(otu_file)))
-      stop("The mapping file and the OTUs table does not have same rows names")
+  
+  { if (all(is.na(otu_file)))
+    stop("The mapping file and the OTUs table does not have same rows names")
     if (any(reference_name%in%Test_name))
       stop("You have entered the same names as reference and test groups.\n Each group can be either reference or test not  both!")
     if (all(c(Test_name,reference_name)%in%levels(factor(meta_file[,mapping_column]))) == FALSE)
@@ -908,511 +1033,561 @@ if (ncol(taxonomy)!=0) {
     #------Pam Clustering For the Reference Group------#
     ####################################################
     
-    # Check if the number of the reference samples is equal to the number of clusters
-    if (sum(meta_file[,mapping_column] %in% reference_name) == reference_clusters) { 
-      # Create a matrix that includes only the centroids
-      cluster_centroid <- otu_file[meta_file[,mapping_column] %in% reference_name,]
-      ref_clusters <- as.factor(rep(1:reference_clusters))
-      names(ref_clusters) <- rownames(otu_file[meta_file[,mapping_column] %in% reference_name,])
-    } else {
-      pam <- pam(unifract_dist[meta_file[,mapping_column] %in% reference_name,meta_file[,mapping_column] %in% reference_name], reference_clusters, diss=TRUE)
-      
-      # Vector with the indexes of the clusters
-      ref_clusters <- as.factor(as.vector(pam$clustering))
-      # Naming the elements of the cluster vector
-      names(ref_clusters) <- rownames(otu_file[meta_file[,mapping_column] %in% reference_name,])
+    # Calculate the optimal number of clusters for the reference group
+    if (reference_clusters=="Automated"){
+      optimal <- optimal_k( unifract_dist[meta_file[,mapping_column] %in% reference_name,meta_file[,mapping_column] %in% reference_name])
+      reference_clusters <- unlist(optimal[1])
+      reference_CH <- unlist(optimal[2])
+    }
+    
+    
+    { if (sum(meta_file[,mapping_column] %in% reference_name) < reference_clusters) 
+      stop("The number of the reference samples are less than the number of clusters!")
       
       
-      # Calculate the new centroids If the user selected the "mean" or "median" option
-      if (central_point != "medoid"){
-        
+      # Check if the number of the reference samples is equal to the number of clusters
+      if (sum(meta_file[,mapping_column] %in% reference_name) == reference_clusters) { 
         # Create a matrix that includes only the centroids
-        cluster_centroid <- c()
-        for (i in 1:reference_clusters) { 
-          # Create a matrix that includes only the sample of each cluster will be stored
-          cl<-otu_file[pam$clustering==i,]
-          if (central_point=="median"){
-            # Calculate the new centroids 
-            cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,median))
-          } else if (central_point=="mean") {
-            # Calculate the new centroids 
-            cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,mean))
+        cluster_centroid <- otu_file[meta_file[,mapping_column] %in% reference_name,]
+        ref_clusters <- as.factor(rep(1:reference_clusters))
+        names(ref_clusters) <- rownames(otu_file[meta_file[,mapping_column] %in% reference_name,])
+      } else {
+        pam <- pam(unifract_dist[meta_file[,mapping_column] %in% reference_name,meta_file[,mapping_column] %in% reference_name], reference_clusters, diss=TRUE)
+        
+        # Vector with the indexes of the clusters
+        ref_clusters <- as.factor(as.vector(pam$clustering))
+        # Naming the elements of the cluster vector
+        names(ref_clusters) <- rownames(otu_file[meta_file[,mapping_column] %in% reference_name,])
+        
+        
+        # Calculate the new centroids If the user selected the "mean" or "median" option
+        if (central_point != "medoid"){
+          
+          # Create a matrix that includes only the centroids
+          cluster_centroid <- c()
+          for (i in 1:reference_clusters) { 
+            # Create a matrix that includes only the sample of each cluster will be stored
+            cl<-otu_file[pam$clustering==i,]
+            if (central_point=="median"){
+              # Calculate the new centroids 
+              cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,median))
+            } else if (central_point=="mean") {
+              # Calculate the new centroids 
+              cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,mean))
+            }
+          }
+        } else {
+          # Create a matrix that includes only the centroids
+          cluster_centroid <- otu_file[pam[["medoids"]],]
+        }
+      }
+      #-------------#
+      
+      
+      ########################################################################
+      #-------Pam Clustering For Test Groups (1 cluster for each  group)-----#
+      ########################################################################
+      
+      # Each test group will we clustered into 1 cluster
+      clusters <- ref_clusters
+      # Selecting a medoid for every Test group
+      if (any(Test_name != "None")) {
+        for (i in 1:length(levels)) {
+          # If the test group has only element, this one will be used as the medoid. Otherwise pam clustering will be performed (1 cluster)
+          if (length(which(meta_file[,mapping_column]==levels[i])) == 1) {
+            # Add the new medoid to the cluster_centroid matrix
+            cluster_centroid <- rbind(cluster_centroid,otu_file[which(meta_file[,mapping_column] == levels[i]),])
+          } else {
+            if (central_point == "medoid"){
+              # Perform Pam algorithm
+              m <- otu_file[pam(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]], 1, diss=TRUE)[["medoids"]],]
+              # Add the new medoid to the cluster_centroid matrix
+              cluster_centroid <- rbind(cluster_centroid,m)
+            } else {
+              if (central_point == "median"){
+                
+                # Add the new median point to the cluster_centroid matrix
+                cluster_centroid <-  rbind.data.frame(cluster_centroid,apply(otu_file[which(meta_file[,mapping_column] == levels[i]),],2,median))
+              } else if (central_point=="mean"){
+                # Add the new mean point to the cluster_centroid matrix
+                cluster_centroid <-  rbind.data.frame(cluster_centroid,apply(otu_file[which(meta_file[,mapping_column] == levels[i]),],2,mean))
+              }
+            }
+          }
+          # Create a vector with the clusters indices
+          test_groups_clusters <- rep(reference_clusters+i,sum(meta_file[,mapping_column] == levels[i]))
+          # Naming the elements of the test_groups_clusters vector
+          names(test_groups_clusters) <- rownames(otu_file[meta_file[,mapping_column] == levels[i],])
+          # Convert cluster vector to factor
+          clusters <- as.factor(c(clusters,test_groups_clusters))
+        }
+      }
+      
+      if (central_point != "medoid"){
+        # Name the rows of the cluster_centroid(IN case of "mean" or "median")
+        rownames(cluster_centroid) <- c(paste0("mean",1:nrow(cluster_centroid)))
+      }
+      
+      #------------#
+      
+      
+      # Total number of clusters that have formed from the clustering of the reference and test groups
+      # cluster_centroid -> matrix contaning the medoids of the reference and test groups
+      clusters_number <- nrow(cluster_centroid)
+      
+      # Naming the elements of the cluster vector
+      # clusters -> vector containing the clusters of the reference and test groups
+      clusters <- clusters[rownames(meta_file)]
+      
+      #--------------------------------------#
+      
+      
+      
+      ####################################################################################
+      #--------------- Performing De novo clustering to test groups ---------------------#
+      ####################################################################################
+      
+      
+      # Vector where the test clusters will be placed 
+      # denovo_clusters -> vector with the clusters of the reference and test groups (de novo clustering has been performed to both the reference and test groups)
+      denovo_clusters <- c()
+      test_ch <- list()
+      
+      if (any(Test_name != "None") & index == 0) { 
+        for (i in 1:length(levels)) {
+          
+          # Calculate the optimal number of clusters for the reference group
+          if (test_clusters_in == "Automated"){
+            optimal <- optimal_k(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]])
+            test_clusters[i] <- unlist(optimal[1])
+            test_ch[[i]] <- unlist(optimal[2])
+          }
+          if (length(which(meta_file[,mapping_column] == levels[i])) > test_clusters[i]){
+            # Perform de novo clustering for every test group
+            pam2 <- pam(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]], test_clusters[i], diss=TRUE)
+            # Store the clusters
+            test_groups_clusters2 <- as.factor(as.vector(pam2$clustering))
+            # Name denovo_clusters
+            names(test_groups_clusters2) <- rownames(otu_file[meta_file[,mapping_column] == levels[i],])
+            denovo_clusters <- c(denovo_clusters,test_groups_clusters2)
+            
+          } else {index <- 1}
+        }
+      }
+      if (index == 0){
+        # De novo clusters of the reference and test groups
+        denovo_clusters <- c(ref_clusters,denovo_clusters)
+        # Name denovo_clusters
+        denovo_clusters <- denovo_clusters[rownames(meta_file)]
+      }
+      
+      # Add in the cluster_centroid the mean or median points for every test cluster (that derived from the denovo clustering)
+      if (any(Test_name != "None") & index == 0) { 
+        for (i in 1:length(levels)) {
+          if (central_point != "medoid"){
+            for (j in 1:test_clusters[i]) { 
+              # Create a matrix that includes only the sample of each cluster will be stored
+              cl <- otu_file[names(which(denovo_clusters[meta_file[,mapping_column] == levels[i]] == j)),]
+              if (central_point == "median"){
+                # Add the new median point to the cluster_centroid matrix
+                cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,median))
+                # Name the new row of the cluster_centroid
+                rownames(cluster_centroid)[nrow(cluster_centroid)] <- paste(levels[i],j)
+              } else if (central_point == "mean") {
+                # Add the new mean point to the cluster_centroid matrix
+                cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,mean))
+                # Name the new row of the cluster_centroid
+                rownames(cluster_centroid)[nrow(cluster_centroid)] <- paste(levels[i],j)
+              }
+            }
+          }
+        }
+      }
+      
+      
+      ##################  Create all the necessary paths and directories ###############
+      
+      
+      # Create the directory where all output files will be saved 
+      outputs_folder <- paste0(mapping_column,"-",paste(reference_name,collapse="+"),"-",reference_clusters," (",paste(Test_name,collapse="+"),")")
+      outputs_path   <- paste0(OriginalPath,"/",outputs_folder)
+      dir.create(outputs_folder)
+      
+      # Path and Directory where the results will be stored
+      results_folder <- paste0("results","-",paste(reference_name,collapse="+"),"-",reference_clusters)
+      results_path   <- paste0(outputs_path,"/",results_folder)
+      dir.create(paste0(outputs_path,"/",results_folder))
+      
+      # Path and Directory where the p-values will be stored
+      pvalues_folder <- paste0("P-values","-",paste(reference_name,collapse="+"),"-",reference_clusters)
+      pvalues_path   <- paste0(results_path,"/",pvalues_folder)
+      dir.create(paste0(results_path,"/",pvalues_folder))
+      
+      # Path and Directory where the plots will be stored
+      plots_folder   <- paste0("Plots","-",paste(reference_name,collapse="+"),"-",reference_clusters)
+      plots_path     <- paste0(results_path,"/",plots_folder)
+      dir.create(paste0(results_path,"/",plots_folder))
+      
+      # Path and Directory where the rest tables will be stored
+      tables_folder  <- paste0("Tables","-",paste(reference_name,collapse="+"),"-",reference_clusters)
+      tables_path    <- paste0(results_path,"/",tables_folder)
+      dir.create(paste0(results_path,"/",tables_folder))
+      
+      
+      
+      ##########################################################################################################################################################
+      #######################################################           DISTANCES       ########################################################################
+      ##########################################################################################################################################################
+      
+      
+      if(central_point != "medoid"){
+        # Combine the OTUs table with the samples of the cluster_cenrtoid 
+        otu_file2 <- rbind.data.frame(cluster_centroid,otu_file)
+        # Calculate the UniFrac distance matrix for comparing microbial communities
+        unifracs2 <- GUniFrac(otu_file2, rooted_tree, alpha = c(0.0,0.5,1.0))$unifracs
+        # Weight on abundant lineages so the distance is not dominated by highly abundant lineages with 0.5 having the best power
+        unifract_dist2 <- unifracs2[, , "d_0.5"]
+        
+        
+        # Initialization of the reference distance matrix
+        distances_matrix <- data.frame(matrix(ncol = clusters_number, nrow = nrow(otu_file)))
+        # Name the rows of the distances_matrix
+        rownames(distances_matrix) <- rownames(otu_file)
+        # Placing in the distances_matrix all the distances from each sample to the closest central point 
+        for (i in (1:nrow(otu_file))) {
+          for (j in 1:clusters_number) {
+            dist <- unifract_dist2[rownames(otu_file)[i],rownames(cluster_centroid)[j]]
+            distances_matrix[i,j] <- dist
           }
         }
       } else {
-        # Create a matrix that includes only the centroids
-        cluster_centroid <- otu_file[pam[["medoids"]],]
-      }
-    }
-    #-------------#
-    
-    
-    ########################################################################
-    #-------Pam Clustering For Test Groups (1 cluster for each  group)-----#
-    ########################################################################
-    
-    # Each test group will we clustered into 1 cluster
-    clusters <- ref_clusters
-    # Selecting a medoid for every Test group
-    if (any(Test_name != "None")) {
-      for (i in 1:length(levels)) {
-        # If the test group has only element, this one will be used as the medoid. Otherwise pam clustering will be performed (1 cluster)
-        if (length(which(meta_file[,mapping_column]==levels[i])) == 1) {
-          # Add the new medoid to the cluster_centroid matrix
-          cluster_centroid <- rbind(cluster_centroid,otu_file[which(meta_file[,mapping_column] == levels[i]),])
-        } else {
-          if (central_point == "medoid"){
-            # Perform Pam algorithm
-            m <- otu_file[pam(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]], 1, diss=TRUE)[["medoids"]],]
-            # Add the new medoid to the cluster_centroid matrix
-            cluster_centroid <- rbind(cluster_centroid,m)
-          } else {
-            if (central_point == "median"){
-              
-              # Add the new median point to the cluster_centroid matrix
-              cluster_centroid <-  rbind.data.frame(cluster_centroid,apply(otu_file[which(meta_file[,mapping_column] == levels[i]),],2,median))
-            } else if (central_point=="mean"){
-              # Add the new mean point to the cluster_centroid matrix
-              cluster_centroid <-  rbind.data.frame(cluster_centroid,apply(otu_file[which(meta_file[,mapping_column] == levels[i]),],2,mean))
-            }
-          }
-        }
-        # Create a vector with the clusters indices
-        test_groups_clusters <- rep(reference_clusters+i,sum(meta_file[,mapping_column] == levels[i]))
-        # Naming the elements of the test_groups_clusters vector
-        names(test_groups_clusters) <- rownames(otu_file[meta_file[,mapping_column] == levels[i],])
-        # Convert cluster vector to factor
-        clusters <- as.factor(c(clusters,test_groups_clusters))
-      }
-    }
-    
-    if (central_point != "medoid"){
-      # Name the rows of the cluster_centroid(IN case of "mean" or "median")
-      rownames(cluster_centroid) <- c(paste0("mean",1:nrow(cluster_centroid)))
-    }
-    
-    #------------#
-    
-    
-    # Total number of clusters that have formed from the clustering of the reference and test groups
-    # cluster_centroid -> matrix contaning the medoids of the reference and test groups
-    clusters_number <- nrow(cluster_centroid)
-    
-    # Naming the elements of the cluster vector
-    # clusters -> vector containing the clusters of the reference and test groups
-    clusters <- clusters[rownames(meta_file)]
-    
-    #--------------------------------------#
-    
-    
-    
-    ####################################################################################
-    #--------------- Performing De novo clustering to test groups ---------------------#
-    ####################################################################################
-    
-    
-    # Vector where the test clusters will be placed 
-    # denovo_clusters -> vector with the clusters of the reference and test groups (de novo clustering has been performed to both the reference and test groups)
-    denovo_clusters <- c()
-    
-    if (any(Test_name != "None") & index == 0) { 
-      for (i in 1:length(levels)) {
-        if (length(which(meta_file[,mapping_column] == levels[i])) > test_clusters[i]){
-          # Perform de novo clustering for every test group
-          pam2 <- pam(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]], test_clusters[i], diss=TRUE)
-          # Store the clusters
-          test_groups_clusters2 <- as.factor(as.vector(pam2$clustering))
-          # Name denovo_clusters
-          names(test_groups_clusters2) <- rownames(otu_file[meta_file[,mapping_column] == levels[i],])
-          denovo_clusters <- c(denovo_clusters,test_groups_clusters2)
-          
-        } else {index <- 1}
-      }
-    }
-    if (index == 0){
-      # De novo clusters of the reference and test groups
-      denovo_clusters <- c(ref_clusters,denovo_clusters)
-      # Name denovo_clusters
-      denovo_clusters <- denovo_clusters[rownames(meta_file)]
-    }
-    
-    # Add in the cluster_centroid the mean or median points for every test cluster (that derived from the denovo clustering)
-    if (any(Test_name != "None") & index == 0) { 
-      for (i in 1:length(levels)) {
-        if (central_point != "medoid"){
-          for (j in 1:test_clusters[i]) { 
-            # Create a matrix that includes only the sample of each cluster will be stored
-            cl <- otu_file[names(which(denovo_clusters[meta_file[,mapping_column] == levels[i]] == j)),]
-            if (central_point == "median"){
-              # Add the new median point to the cluster_centroid matrix
-              cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,median))
-              # Name the new row of the cluster_centroid
-              rownames(cluster_centroid)[nrow(cluster_centroid)] <- paste(levels[i],j)
-            } else if (central_point == "mean") {
-              # Add the new mean point to the cluster_centroid matrix
-              cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,mean))
-              # Name the new row of the cluster_centroid
-              rownames(cluster_centroid)[nrow(cluster_centroid)] <- paste(levels[i],j)
-              
-            }
+        # Initialization of the reference distance matrix
+        distances_matrix <- data.frame(matrix(ncol = clusters_number, nrow = nrow(otu_file)))
+        # Name the rows of the distances_matrix
+        rownames(distances_matrix) <- rownames(otu_file)
+        
+        
+        
+        # Placing in the distances_matrix all the distances from each sample to the closest central point 
+        for (i in (1:nrow(otu_file))) {
+          for (j in 1:clusters_number) {
+            dist <- unifract_dist[rownames(otu_file)[i],rownames(cluster_centroid)[j]]
+            distances_matrix[i,j] <- dist
           }
         }
       }
-    }
-    
-    ##########################################################################################################################################################
-    #######################################################           DISTANCES       ########################################################################
-    ##########################################################################################################################################################
-    
-    
-    if(central_point != "medoid"){
-      # Combine the OTUs table with the samples of the cluster_cenrtoid 
-      otu_file2 <- rbind.data.frame(cluster_centroid,otu_file)
-      # Calculate the UniFrac distance matrix for comparing microbial communities
-      unifracs2 <- GUniFrac(otu_file2, rooted_tree, alpha = c(0.0,0.5,1.0))$unifracs
-      # Weight on abundant lineages so the distance is not dominated by highly abundant lineages with 0.5 having the best power
-      unifract_dist2 <- unifracs2[, , "d_0.5"]
+      
+      # Add cluster vector as a new column in the distances_matrix
+      distances_matrix[,(clusters_number+1)] <- c(clusters) 
       
       
-      # Initialization of the reference distance matrix
-      distances_matrix <- data.frame(matrix(ncol = clusters_number, nrow = nrow(otu_file)))
-      # Name the rows of the distances_matrix
-      rownames(distances_matrix) <- rownames(otu_file)
-      # Placing in the distances_matrix all the distances from each sample to the closest central point 
-      for (i in (1:nrow(otu_file))) {
-        for (j in 1:clusters_number) {
-          dist <- unifract_dist2[rownames(otu_file)[i],rownames(cluster_centroid)[j]]
-          distances_matrix[i,j] <- dist
+      if (clusters_number == 1){
+        
+        # Find the minimum distance of each row
+        minimum_distance <- as.numeric(c(distances_matrix[,1]))
+        # Add in the distances_matrix the closest cluster
+        distances_matrix[,(clusters_number+2)] <- c(rep(1,length(minimum_distance)))
+        
+        # Insert that information in the distances_matrix as a new column
+        distances_matrix[,(clusters_number+3)] <- c(rep(1,length(minimum_distance)))
+        
+        # Find the distance to the closest reference central point for every sample
+        minimum_reference_distance <- as.numeric(c(distances_matrix[,1]))
+        
+        # Name the columns of the distances_matrix
+        colnames(distances_matrix) <- c(paste("Distance", central_point,1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster")
+        
+      } else { 
+        
+        # Find the minimum distance of each row 
+        minimum_distance <- as.numeric(apply(distances_matrix[,1:(ncol(distances_matrix)-1)],1,function(x) min(x[1:clusters_number])))
+        # Add in the distances_matrix the closest cluster
+        for (i in 1:length(minimum_distance)) {
+          distances_matrix[i,(clusters_number+2)] <- which(distances_matrix[i,1:clusters_number] == min(distances_matrix[i,1:clusters_number]))[1]
         }
-      }
-    } else {
-      # Initialization of the reference distance matrix
-      distances_matrix <- data.frame(matrix(ncol = clusters_number, nrow = nrow(otu_file)))
-      # Name the rows of the distances_matrix
-      rownames(distances_matrix) <- rownames(otu_file)
-      
-      
-      
-      # Placing in the distances_matrix all the distances from each sample to the closest central point 
-      for (i in (1:nrow(otu_file))) {
-        for (j in 1:clusters_number) {
-          dist <- unifract_dist[rownames(otu_file)[i],rownames(cluster_centroid)[j]]
-          distances_matrix[i,j] <- dist
-        }
-      }
-    }
-    
-    # Add cluster vector as a new column in the distances_matrix
-    distances_matrix[,(clusters_number+1)] <- c(clusters) 
-    
-    
-    if (clusters_number == 1){
-      
-      # Find the minimum distance of each row
-      minimum_distance <- as.numeric(c(distances_matrix[,1]))
-      # Add in the distances_matrix the closest cluster
-      distances_matrix[,(clusters_number+2)] <- c(rep(1,length(minimum_distance)))
-      
-      # Insert that information in the distances_matrix as a new column
-      distances_matrix[,(clusters_number+3)] <- c(rep(1,length(minimum_distance)))
-      
-      # Find the distance to the closest reference central point for every sample
-      minimum_reference_distance <- as.numeric(c(distances_matrix[,1]))
-      
-      # Name the columns of the distances_matrix
-      colnames(distances_matrix) <- c(paste("Distance", central_point,1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster")
-      
-    } else { 
-      
-      # Find the minimum distance of each row 
-      minimum_distance <- as.numeric(apply(distances_matrix[,1:(ncol(distances_matrix)-1)],1,function(x) min(x[1:clusters_number])))
-      # Add in the distances_matrix the closest cluster
-      for (i in 1:length(minimum_distance)) {
-        distances_matrix[i,(clusters_number+2)] <- which(distances_matrix[i,1:clusters_number] == min(distances_matrix[i,1:clusters_number]))[1]
+        
+        # Find closest reference central point for each Sample
+        minimum_reference_cluster <- apply(distances_matrix[,1:(ncol(distances_matrix)-2)],1,function(x) which(x[1:(clusters_number-test_groups_number)] == min(x[1:(clusters_number-test_groups_number)])))
+        
+        # Insert that information in the distances_matrix as a new column
+        distances_matrix[,(clusters_number+3)] <- minimum_reference_cluster
+        
+        # Find the distance to the closest reference central point for every sample
+        minimum_reference_distance <- apply(distances_matrix[,1:(ncol(distances_matrix)-3)],1,function(x) min(x[1:(clusters_number-test_groups_number)]))
+        
+        # Name the columns of the distances_matrix
+        colnames(distances_matrix) <- c(paste("Distance",central_point,1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster")
+        
       }
       
-      # Find closest reference central point for each Sample
-      minimum_reference_cluster <- apply(distances_matrix[,1:(ncol(distances_matrix)-2)],1,function(x) which(x[1:(clusters_number-test_groups_number)] == min(x[1:(clusters_number-test_groups_number)])))
+      #########################################################################################################################################################
+      ############################################      Forming auxiliary variables that will     #############################################################
+      ############################################          be used in the following steps        #############################################################
+      #########################################################################################################################################################
       
-      # Insert that information in the distances_matrix as a new column
-      distances_matrix[,(clusters_number+3)] <- minimum_reference_cluster
       
-      # Find the distance to the closest reference central point for every sample
-      minimum_reference_distance <- apply(distances_matrix[,1:(ncol(distances_matrix)-3)],1,function(x) min(x[1:(clusters_number-test_groups_number)]))
+      ###################################################################
+      ##################### Make all the necessary Changes ##############
+      ###################################################################
       
-      # Name the columns of the distances_matrix
-      colnames(distances_matrix) <- c(paste("Distance",central_point,1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster")
       
-    }
-    
-    #########################################################################################################################################################
-    ############################################      Forming auxiliary variables that will     #############################################################
-    ############################################          be used in the following steps       ##############################################################
-    #########################################################################################################################################################
-    
-    
-    ###################################################################
-    ##################### Make all the necessary Changes ##############
-    ###################################################################
-    
-    
-    ###############  Change names of clusters indexes in order to be more readable and informative  #################
-    
-    # Convert clusters vector to numeric to avoid errors
-    clusters <- as.numeric(clusters)
-    # Prepare a new vector for the mapping file table(will be the first column)
-    mapping_cluster <- as.numeric(clusters)
-    
-    #----- Change the names in the cluster vector ------#
-    
-    # Change the names of the reference samples
-    for (i in 1:reference_clusters) {
-      clusters[clusters == i] <- paste(paste(reference_name,collapse="+"),i)
-    }
-    
-    # Change the names of the test samples
-    for (i in reference_clusters+1:(reference_clusters+1+length(levels))) {
-      clusters[clusters == i] <- levels[i-reference_clusters]
-    }
-    
-    #----- Change the names in mapping_cluster vector -----#
-    
-    # Change the names of the reference samples
-    if (length(reference_name) == 1){
-      for (i in 1:reference_clusters) {
-        mapping_cluster[mapping_cluster == i] <- paste(reference_name,i)
-      }
-    } else {
-      for (i in 1:reference_clusters) {
-        mapping_cluster[mapping_cluster == i] <- paste(paste(reference_name,collapse="+"),i)
-      }
-    }
-    
-    # Change the names of the test samples
-    for (i in reference_clusters+1:(reference_clusters+1+length(levels))) {
-      mapping_cluster[mapping_cluster == i] <- levels[i-reference_clusters]
-    }
-    
-    #------ Change the names of the samples that derived from the de novo clustering (denovo_clusters) --------#
-    
-    if (index == 0) {
-      for (i in 1:length(levels)) {
-        # Change the names of the test samples
-        denovo_clusters[meta_file[,mapping_column] == levels[i]] <- paste(levels[i],denovo_clusters[meta_file[,mapping_column] == levels[i]])
-      }
+      ###############  Change names of clusters indexes in order to be more readable and informative  #################
+      
+      # Convert clusters vector to numeric to avoid errors
+      clusters <- as.numeric(clusters)
+      # Prepare a new vector for the mapping file table(will be the first column)
+      mapping_cluster <- as.numeric(clusters)
+      
+      #----- Change the names in the cluster vector ------#
+      
       # Change the names of the reference samples
-      denovo_clusters[meta_file[,mapping_column] %in% reference_name] <- mapping_cluster[meta_file[,mapping_column] %in% reference_name]
-    }
-    
-    #---------------------------------#
-    
-    
-    
-    
-    ###################   Mapping file #######################
-    
-    
-    # Form the name of the first column of the mapping file
-    column_name <- paste0(mapping_column,"-",paste(reference_name,collapse="+"),"-",reference_clusters)
-    # Create the new mapping file
-    mapping_file <- cbind(column_name=mapping_cluster,meta_file)
-    # Name the columns of the mapping file 
-    colnames(mapping_file)[1] <- column_name
-    # Create an extra column with the clusters derived from the de novo clustering of the reference ad test groups
-    if (index == 0 & any(Test_name != "None")){ 
-      mapping_file <- cbind(column_name=denovo_clusters, mapping_file)
-      colnames(mapping_file)[1] <- "De novo clusters"
-    }
-    
-    #-------------#
-    
-    
-    
-    ####################  central points matrix #################
-    
-    
-    # Change the row names of Medoid in order to be more readable
-    rownames(cluster_centroid) <- paste0(rownames(cluster_centroid),"(",levels(factor(clusters,levels=unique(clusters))),")")
-    # Add the taxonomy column
-    cluster_centroid <- cbind(t(cluster_centroid),taxonomy)
-    
-    
-    
-    ##########################################################################################
-    ##########################   Summarized Distance Matrix   ################################
-    ##########################################################################################
-    
-    
-    
-    # Form a vector containing distances from each sample to the self Medoid (clusters originate from the initial pam clustering)
-    self_dist_initial_pam <- as.numeric(apply(distances_matrix , 1 , function(x) x[as.numeric(x[(clusters_number+1)])]))
-    
-    
-    #----------- Perform PAM clustering to reference group (1 cluster) ----------------#
-    
-    # Selecting a single Medoid for the reference group by performing PAM clustering
-    self_pam <- pam(unifract_dist[meta_file[,mapping_column]%in%reference_name,meta_file[,mapping_column]%in% reference_name], 1, diss=TRUE)[["medoids"]]
-    
-    # Form a vector containing distances to self Medoid (in this case reference group has only one Medoid)
-    if (any(Test_name != "None")){
-      self_distance <- c(as.numeric(unifract_dist[self_pam,1:sum(meta_file[,mapping_column] %in% reference_name)]),
-                         as.numeric(apply(distances_matrix[(sum(meta_file[,mapping_column] %in% reference_name)+1):length(clusters),],1,function(x) x[as.numeric(x[(clusters_number+1)])])))
+      for (i in 1:reference_clusters) {
+        clusters[clusters == i] <- paste(paste(reference_name,collapse="+"),i)
+      }
+      
+      # Change the names of the test samples
+      for (i in reference_clusters+1:(reference_clusters+1+length(levels))) {
+        clusters[clusters == i] <- levels[i-reference_clusters]
+      }
+      
+      #----- Change the names in mapping_cluster vector -----#
+      
+      # Change the names of the reference samples
+      if (length(reference_name) == 1){
+        for (i in 1:reference_clusters) {
+          mapping_cluster[mapping_cluster == i] <- paste(reference_name,i)
+        }
+      } else {
+        for (i in 1:reference_clusters) {
+          mapping_cluster[mapping_cluster == i] <- paste(paste(reference_name,collapse="+"),i)
+        }
+      }
+      
+      # Change the names of the test samples
+      for (i in reference_clusters+1:(reference_clusters+1+length(levels))) {
+        mapping_cluster[mapping_cluster == i] <- levels[i-reference_clusters]
+      }
+      
+      #------ Change the names of the samples that derived from the de novo clustering (denovo_clusters) --------#
+      
+      if (index == 0) {
+        for (i in 1:length(levels)) {
+          # Change the names of the test samples
+          denovo_clusters[meta_file[,mapping_column] == levels[i]] <- paste(levels[i],denovo_clusters[meta_file[,mapping_column] == levels[i]])
+        }
+        # Change the names of the reference samples
+        denovo_clusters[meta_file[,mapping_column] %in% reference_name] <- mapping_cluster[meta_file[,mapping_column] %in% reference_name]
+      }
+      
+      #---------------------------------#
+      
+      
+      
+      
+      ###################   Mapping file #######################
+      
+      
+      # Form the name of the first column of the mapping file
+      column_name <- paste0(mapping_column,"-",paste(reference_name,collapse="+"),"-",reference_clusters)
+      # Create the new mapping file
+      mapping_file <- cbind(column_name=mapping_cluster,meta_file)
+      # Name the columns of the mapping file 
+      colnames(mapping_file)[1] <- column_name
+      # Create an extra column with the clusters derived from the de novo clustering of the reference ad test groups
+      if (index == 0 & any(Test_name != "None")){ 
+        mapping_file <- cbind(column_name=denovo_clusters, mapping_file)
+        colnames(mapping_file)[1] <- "De novo clusters"
+      }
+      
+      #-------------#
+      
+      
+      
+      ####################  central points matrix #################
+      
+      
+      # Change the row names of Medoid in order to be more readable
+      rownames(cluster_centroid) <- paste0(rownames(cluster_centroid),"(",levels(factor(clusters,levels=unique(clusters))),")")
+      # Add the taxonomy column
+      cluster_centroid <- cbind(t(cluster_centroid),taxonomy)
+      
+      
+      
+      ##########################################################################################
+      ##########################   Summarized Distance Matrix   ################################
+      ##########################################################################################
+      
+      
+      
+      # Form a vector containing distances from each sample to the self Medoid (clusters originate from the initial pam clustering)
+      self_dist_initial_pam <- as.numeric(apply(distances_matrix , 1 , function(x) x[as.numeric(x[(clusters_number+1)])]))
+      
+      
+      #----------- Perform PAM clustering to reference group (1 cluster) ----------------#
+      
+      # Selecting a single Medoid for the reference group by performing PAM clustering
+      self_pam <- pam(unifract_dist[meta_file[,mapping_column]%in%reference_name,meta_file[,mapping_column]%in% reference_name], 1, diss=TRUE)[["medoids"]]
+      
+      # Form a vector containing distances to self Medoid (in this case reference group has only one Medoid)
+      if (any(Test_name != "None")){
+        self_distance <- c(as.numeric(unifract_dist[self_pam,1:sum(meta_file[,mapping_column] %in% reference_name)]),
+                           as.numeric(apply(distances_matrix[(sum(meta_file[,mapping_column] %in% reference_name)+1):length(clusters),],1,function(x) x[as.numeric(x[(clusters_number+1)])])))
       } else {
         self_distance <- c(as.numeric(unifract_dist[self_pam,1:sum(meta_file[,mapping_column] %in% reference_name)]))
-        }
-    #----------------------------------#
-    
-    
-    # Formation of the summarized_distance_matrix. 
-    summarized_distance_matrix <- data.frame(clusters,self_dist_initial_pam,self_distance,minimum_distance,as.numeric(minimum_reference_distance))
-    # Convert first column into factor
-    summarized_distance_matrix[,1] <- as.factor(summarized_distance_matrix[,1])
-    
-    # Naming the rows of summarized_distance_matrix
-    rownames(summarized_distance_matrix) <- rownames(otu_file)
-    
-    #Naming the columns of summarized_distance_matrix
-    colnames(summarized_distance_matrix) <- c("Clusters",paste0("Distances From Self ",central_point,"(",reference_clusters,"clusters",")"),paste0("Distances from Self ", central_point,"(1 cluster)"),"Minimum_distance","Closest Reference Cluster")
-    
-    
-    # Replace zeros with NAs
-    summarized_distance_matrix[summarized_distance_matrix == 0] <- NA
-    
-    
-    
-    
-    ####################################################################################################### 
-    ##############################  plot_matrix (will be used later for the plots) ########################
-    #######################################################################################################  
-    
-    
-    # plot_matrix -> matrix that will be used in the following plots
-    if (index == 0 & any(Test_name != "None")) {
-      denovo_clusters <- denovo_clusters[rownames(distances_matrix)]
-      plot_matrix <- data.frame(as.factor(c(denovo_clusters)),distances_matrix)
+      }
+      #----------------------------------#
+      
+      
+      # Formation of the summarized_distance_matrix. 
+      summarized_distance_matrix <- data.frame(clusters,self_dist_initial_pam,self_distance,minimum_distance,as.numeric(minimum_reference_distance))
+      # Convert first column into factor
+      summarized_distance_matrix[,1] <- as.factor(summarized_distance_matrix[,1])
+      
+      # Naming the rows of summarized_distance_matrix
+      rownames(summarized_distance_matrix) <- rownames(otu_file)
+      
+      #Naming the columns of summarized_distance_matrix
+      colnames(summarized_distance_matrix) <- c("Clusters",paste0("Distances From Self ",central_point,"(",reference_clusters,"clusters",")"),paste0("Distances from Self ", central_point,"(1 cluster)"),"Minimum_distance","Closest Reference Cluster")
+      
+      
+      # Replace zeros with NAs
+      summarized_distance_matrix[summarized_distance_matrix == 0] <- NA
+      
+      
+      
+      
+      ####################################################################################################### 
+      ##############################  plot_matrix (will be used later for the plots) ########################
+      #######################################################################################################  
+      
+      
+      # plot_matrix -> matrix that will be used in the following plots
+      if (index == 0 & any(Test_name != "None")) {
+        denovo_clusters <- denovo_clusters[rownames(distances_matrix)]
+        plot_matrix <- data.frame(as.factor(c(denovo_clusters)),distances_matrix)
       } else { plot_matrix <- data.frame(as.factor(rep(0,nrow(distances_matrix))),distances_matrix)
       }
-    # Add a column with the names of the clusters
-    plot_matrix[meta_file[,mapping_column] %in% reference_name,(ncol(plot_matrix)+1)] <- paste(paste(reference_name,collapse="+"),plot_matrix[meta_file[,mapping_column]%in%reference_name,"Nearest.reference.cluster" ])
-    
-    # Change the names of the distances-based (DB) clusters
-    if (any(Test_name != "None")) {
-      for (i in 1:length(levels)) {
-        plot_matrix[meta_file[,mapping_column] == levels[i],ncol(plot_matrix)] <- paste0(levels[i]," ",plot_matrix[meta_file[,mapping_column] == levels[i],"Nearest.reference.cluster"],"(DB)")}
-    }
-    
-    
-    
-    ##########################################################################################
-    ##########################    Input table(will be used for the     ####################### 
-    ##########################   visualization and the Chi square test)  #####################
-    ##########################################################################################
-    
-    
-    #------------- Input table(will be used for the visualization and the Chi square test) ------------------#
-    
-    # Form the data frame that will be used for the visualization 
-    input_table <- cbind.data.frame(meta_file[,mapping_column],clusters,self_dist_initial_pam,self_distance,as.numeric(minimum_reference_distance))
-    # Name the columns of the input_table
-    colnames(input_table) <- c("Category","Clusters",paste("Distances From Self Medoid","(",reference_clusters,"clusters",")"),"Distances From Self Medoid (1 cluster)","Closest Reference Cluster")
-    # Name the rows of the input_table
-    rownames(input_table) <- rownames(meta_file)
-    
-    # Replace zeros with NAs
-    input_table[input_table == 0] <- NA
-    
-    # If the reference_name variable has more than 1 elements then these inputs will be combined and form the new name
-    input_table[,1] <- as.character(input_table[,1])
-    if (length(reference_name) >= 2) {
-      input_table[1:length(which(input_table[,1] %in% reference_name)),1] <- c(rep(paste(reference_name,collapse="+"),length(which(input_table[,1] %in% reference_name))))
-    }
-    
-    
-    #---------------------#
-    
-    
-    
-    ###############################################################  
-    ###################    Colours Matrix  ########################
-    ###############################################################
-    
-    #-------------------------------------------------------------------#
-    # Create the data frame with the colours of the different groups
-    # These colours will be used for all the following plots
-    #-------------------------------------------------------------------#
-    
-    
-    # Colours for the reference clusters
-    colour_groups <- levels(factor(plot_matrix[meta_file[,mapping_column]%in%reference_name,ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%reference_name,ncol(plot_matrix)])))
-    # Choose the colours from the 'Set2' palette
-    colour_vector <- c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[1],length(colour_groups)))
-    
-    
-    
-    
-    # Add the colours for the test groups
-    if (any(Test_name != "None")){
-      for (i in 1:length(levels)){
-        # Distances-based groups
-        colour_groups <- c(colour_groups,levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)])))) 
-        if (index == 0){
-          # De novo clustering groups
-          colour_groups <- c(colour_groups,levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],1], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],1]))))}
-        # colours for the distances-based groups
-        colour_vector <- c(colour_vector,c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)])))))))
-        if (index == 0){
-          # colours for the de novo clustering groups
-          colour_vector <- c(colour_vector,c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],1], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],1])))))))}
+      # Add a column with the names of the clusters
+      plot_matrix[meta_file[,mapping_column] %in% reference_name,(ncol(plot_matrix)+1)] <- paste(paste(reference_name,collapse="+"),plot_matrix[meta_file[,mapping_column]%in%reference_name,"Nearest.reference.cluster" ])
+      
+      # Change the names of the distances-based (DB) clusters
+      if (any(Test_name != "None")) {
+        for (i in 1:length(levels)) {
+          plot_matrix[meta_file[,mapping_column] == levels[i],ncol(plot_matrix)] <- paste0(levels[i]," ",plot_matrix[meta_file[,mapping_column] == levels[i],"Nearest.reference.cluster"],"(DB)")}
       }
       
-      for(i in 1:length(levels)) {
-        # Add the test groups
-        colour_groups <- c(colour_groups,levels[i])
-        # Colour for the test groups
-        colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1])
+      
+      
+      ##########################################################################################
+      ##########################    Input table(will be used for the     ####################### 
+      ##########################   visualization and the Chi square test)  #####################
+      ##########################################################################################
+      
+      
+      #------------- Input table(will be used for the visualization and the Chi square test) ------------------#
+      
+      # Form the data frame that will be used for the visualization 
+      input_table <- cbind.data.frame(meta_file[,mapping_column],clusters,self_dist_initial_pam,self_distance,as.numeric(minimum_reference_distance))
+      # Name the columns of the input_table
+      colnames(input_table) <- c("Category","Clusters",paste("Distances From Self Medoid","(",reference_clusters,"clusters",")"),"Distances From Self Medoid (1 cluster)","Closest Reference Cluster")
+      # Name the rows of the input_table
+      rownames(input_table) <- rownames(meta_file)
+      
+      # Replace zeros with NAs
+      input_table[input_table == 0] <- NA
+      
+      # If the reference_name variable has more than 1 elements then these inputs will be combined and form the new name
+      input_table[,1] <- as.character(input_table[,1])
+      if (length(reference_name) >= 2) {
+        input_table[1:length(which(input_table[,1] %in% reference_name)),1] <- c(rep(paste(reference_name,collapse="+"),length(which(input_table[,1] %in% reference_name))))
       }
-    }
-    
-    
-    # Add the Reference group (1 group)
-    colour_groups <- c(colour_groups,paste(reference_name,collapse="+"))
-    # Colour for the Reference group (1 group)
-    colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[1])
-    
-    
-    # Add the Reference groups when exist more than one 
-    if (length(reference_name) > 1){
-      for(i in 1:length(reference_name)){
-        colour_groups <- c(colour_groups,reference_name[i])
-        colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[1])
+      
+      
+      #---------------------#
+      
+      
+      
+      ###############################################################  
+      ###################    Colours Matrix  ########################
+      ###############################################################
+      
+      #-------------------------------------------------------------------#
+      # Create the data frame with the colours of the different groups
+      # These colours will be used for all the following plots
+      #-------------------------------------------------------------------#
+      
+      
+      # Colours for the reference clusters
+      colour_groups <- levels(factor(plot_matrix[meta_file[,mapping_column]%in%reference_name,ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%reference_name,ncol(plot_matrix)])))
+      # Choose the colours from the 'Set2' palette
+      colour_vector <- c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[1],length(colour_groups)))
+      
+      
+      
+      
+      # Add the colours for the test groups
+      if (any(Test_name != "None")){
+        for (i in 1:length(levels)){
+          # Distances-based groups
+          colour_groups <- c(colour_groups,levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)])))) 
+          if (index == 0){
+            # De novo clustering groups
+            colour_groups <- c(colour_groups,levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],1], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],1]))))}
+          # colours for the distances-based groups
+          colour_vector <- c(colour_vector,c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)])))))))
+          if (index == 0){
+            # colours for the de novo clustering groups
+            colour_vector <- c(colour_vector,c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],1], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],1])))))))}
+        }
+        
+        for(i in 1:length(levels)) {
+          # Add the test groups
+          colour_groups <- c(colour_groups,levels[i])
+          # Colour for the test groups
+          colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1])
+        }
       }
-    }
-    
-    
-    # Form the final data frame with the colours
-    colour_matrix <- data.frame(colour_groups,colour_vector)
-    rownames(colour_matrix) <- colour_matrix[,1]
-    
-    
-    
-    
-    
-    #########################################################################################################################################################
-    ##############################################                   Descriptive Statistics  and           ##################################################
-    ##############################################             Statistical analysis of the clusters        ##################################################
-    #########################################################################################################################################################
-    
-    
-    
-    
-    ###########################################################
-    ################### Descriptive Statistics ################
-    ###########################################################
-    
-    
-    
-    #------------------ Reference Group ---------------------#
-    
+      
+      
+      # Add the Reference group (1 group)
+      colour_groups <- c(colour_groups,paste(reference_name,collapse="+"))
+      # Colour for the Reference group (1 group)
+      colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[1])
+      
+      
+      # Add the Reference groups when exist more than one 
+      if (length(reference_name) > 1){
+        for(i in 1:length(reference_name)){
+          colour_groups <- c(colour_groups,reference_name[i])
+          colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[1])
+        }
+      }
+      
+      
+      # Form the final data frame with the colours
+      colour_matrix <- data.frame(colour_groups,colour_vector)
+      rownames(colour_matrix) <- colour_matrix[,1]
+      
+      
+      
+      
+      
+      #########################################################################################################################################################
+      ##############################################                   Descriptive Statistics  and           ##################################################
+      ##############################################             Statistical analysis of the clusters        ##################################################
+      #########################################################################################################################################################
+      
+      
+      
+      
+      ###########################################################
+      ################### Descriptive Statistics ################
+      ###########################################################
+      
+      
+      
+      #------------------ Reference Group ---------------------#
+      
       # Ordering all the distances
       ordered_distance <- data.frame(minimum_reference_distance[order(minimum_reference_distance)])
       
@@ -1562,2386 +1737,1129 @@ if (ncol(taxonomy)!=0) {
       
       #---------------------------------#
       
-    
-    # Create a new vector that contains "YES" and "NO" 
-    # YES indicates that the sample compared to all the other reference samples(except outliers) of the same cluster, is the most distant object 
-    # NO will indicate the opposite 
-    if (any(Test_name != "None")) {
-      maximum <- c()
       
-      # find the outliers and exclude them from the vector and then calculate the maximum distance of each reference cluster
-      for (i in 1:reference_clusters) {
-        all <- subset(distances_matrix[meta_file[,mapping_column] %in% reference_name,i],distances_matrix[meta_file[,mapping_column] %in% reference_name,(clusters_number+1)] == i)
-        outliers <-  boxplot.stats(subset(distances_matrix[meta_file[,mapping_column] %in% reference_name,i],distances_matrix[meta_file[,mapping_column] %in% reference_name,(clusters_number+1)] == i))$out
-        maximum[i] <- max(all[!(all %in% outliers)])
-      }
-      # Compare the distances with the number found above
-      ref_dist <- apply(distances_matrix[meta_file[,mapping_column] != reference_name,],1,function(x) {a <- as.numeric(x[(clusters_number+3)])
-      if (min(x[1:reference_clusters])<maximum[a]) {"NO"} else {"YES"}})
-      
-      # For all the reference sample "NO" will be placed
-      reference <- c(rep("NO", sum(meta_file[,mapping_column] %in% reference_name)))
-      names(reference) <- rownames(distances_matrix[meta_file[,mapping_column] %in% reference_name,])
-      temporary_vector <- c(reference,ref_dist)
-      temporary_vector <- temporary_vector[rownames(distances_matrix)]
-      # Add "YES" and "NO" as a new column to the distances_matrix
-      distances_matrix[,(clusters_number+4)] <- temporary_vector
-      # Name the columns of the distances_matrix
-      colnames(distances_matrix) <- c(paste("Distance Medoid",1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster","Most distant object" )
-    }
-    
-    # Calculate the median distances of each test cluster from the reference clusters
-    median_distances <- data.frame()
-    for(j in 1:reference_clusters){
-      median_distances[1,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% reference_name,, drop = FALSE]),j])
-      rownames(median_distances) <- paste(reference_name,collapse="+")
-    }
-    
-    if (length(Test_name) > 0 & any(Test_name != "None")){
-      for(i in 1:length(Test_name)){
-        for(j in 1:reference_clusters){
-          median_distances[1+i,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% Test_name[i],, drop = FALSE]),j])
-        }
-      }
-      rownames(median_distances) <- c(paste(reference_name,collapse="+"),Test_name)
-    }
-    
-    min_dist <- apply(median_distances,1,min)
-    for (i in 1:nrow(median_distances)){
-      median_distances[i,(reference_clusters+1)] <- which(median_distances[1,] == min_dist[1])
-    }
-    
-    colnames(median_distances) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters),"Closest Ref Cluster")
-    
-    # Write the Chi_square_matrix matrix
-    write_table("DiBaAn-page 7 Median Distances.tab",median_distances,"table")
-    
-    # Table containing the observations per Group
-    median_table <- gtableGrob("Median distances from reference clusters",median_distances,setDT="YES",size=15)
-    
-    
-    
-    ###################################################################################
-    ##################### Statistical analysis of the clusters  #######################
-    #####################              and groups               #######################
-    ###################################################################################
-    
-    
-    
-    
-    ###################### Chi square test ###########################
-    
-    
-    if (length(reference_name) >= 2) {
-      reference_name <- c(paste(reference_name,collapse="+"))
-    }
-    
-    if (reference_clusters > 1) {
-      # Convert independent variable into factor to avoid errors
-      input_table[,1] <- as.factor(input_table[,1]) 
-      input_table[,1] <- factor(input_table[,1],levels=unique(input_table[,1]))
-      
-      # Groups that will be used for the Chi square test
-      chi_levels <- levels(input_table[,1])
-      
-      # Initialization of the Chi_square_matrix
-      Chi_square_matrix <- data.frame(matrix(ncol = (length(chi_levels)) , nrow = reference_clusters))
-      # Naming the row and the columns of Chi_square_matrix
-      colnames(Chi_square_matrix) <- c(chi_levels)
-      rownames(Chi_square_matrix) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "))
-      
-      # Initialization of the chi_names vector
-      # Form a matrix where the number of observations for each cluster will be added
-      for (l in 1:length(chi_levels)){
-        for (c in 1:reference_clusters){
-          Chi_square_matrix[c,(l)] <-  length(which(distances_matrix[input_table[,1]==chi_levels[l],"Nearest reference cluster"] == c))
-        }
-      }
-      
-      #-----####-------####--------###--- Chi square test ---#####----####----####------####----------#
-      
-      
-      #--------------------- Chi square independence testing for reference Cluster(expected vs observed) --------------------------#
-      
-      # Conduct Chi square test
-      exp_p_value <- data.frame(round(chisq.test(Chi_square_matrix[,reference_name],p=c(rep(1/reference_clusters,reference_clusters)))$p.value,4))
-      
-      # Forming the data frame containing the p values
-      colnames(exp_p_value) <- c("p value")
-      # Naming the rows of the exp_p_value data frame
-      rownames(exp_p_value) <- c("expected vs observed")
-      
-      
-      #--------------------- Chi square goodness of fit testing for Groups --------------------------#
+      # Create a new vector that contains "YES" and "NO" 
+      # YES indicates that the sample compared to all the other reference samples(except outliers) of the same cluster, is the most distant object 
+      # NO will indicate the opposite 
       if (any(Test_name != "None")) {
-        combs <- combs(levels(input_table[,1]), 2)
-        # Save the names of that combinations
-        group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+        maximum <- c()
         
+        # find the outliers and exclude them from the vector and then calculate the maximum distance of each reference cluster
+        for (i in 1:reference_clusters) {
+          all <- subset(distances_matrix[meta_file[,mapping_column] %in% reference_name,i],distances_matrix[meta_file[,mapping_column] %in% reference_name,(clusters_number+1)] == i)
+          outliers <-  boxplot.stats(subset(distances_matrix[meta_file[,mapping_column] %in% reference_name,i],distances_matrix[meta_file[,mapping_column] %in% reference_name,(clusters_number+1)] == i))$out
+          maximum[i] <- max(all[!(all %in% outliers)])
+        }
+        # Compare the distances with the number found above
+        ref_dist <- apply(distances_matrix[meta_file[,mapping_column] != reference_name,],1,function(x) {a <- as.numeric(x[(clusters_number+3)])
+        if (min(x[1:reference_clusters])<maximum[a]) {"NO"} else {"YES"}})
         
-        # P_value -> a vector where the p values will be stored
-        chi_p_value <- c(); test <- c()
-        for(chi in 1:nrow(combs)) { 
-          # Performed the Chi square test
-          chi_p_value[chi] <- round(chisq.test(Chi_square_matrix[,combs[chi,2]],p=Chi_square_matrix[,combs[chi,1]],rescale.p = TRUE)$p.value,4)
+        # For all the reference sample "NO" will be placed
+        reference <- c(rep("NO", sum(meta_file[,mapping_column] %in% reference_name)))
+        names(reference) <- rownames(distances_matrix[meta_file[,mapping_column] %in% reference_name,])
+        temporary_vector <- c(reference,ref_dist)
+        temporary_vector <- temporary_vector[rownames(distances_matrix)]
+        # Add "YES" and "NO" as a new column to the distances_matrix
+        distances_matrix[,(clusters_number+4)] <- temporary_vector
+        # Name the columns of the distances_matrix
+        colnames(distances_matrix) <- c(paste("Distance Medoid",1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster","Most distant object" )
+      }
+      
+      # Calculate the median distances of each test cluster from the reference clusters
+      median_distances <- data.frame()
+      for(j in 1:reference_clusters){
+        median_distances[1,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% reference_name,, drop = FALSE]),j])
+        rownames(median_distances) <- paste(reference_name,collapse="+")
+      }
+      
+      if (length(Test_name) > 0 & any(Test_name != "None")){
+        for(i in 1:length(Test_name)){
+          for(j in 1:reference_clusters){
+            median_distances[1+i,j] <- median(distances_matrix[rownames(meta_file[meta_file[,mapping_column] %in% Test_name[i],, drop = FALSE]),j])
           }
+        }
+        rownames(median_distances) <- c(paste(reference_name,collapse="+"),Test_name)
+      }
+      
+      min_dist <- apply(median_distances,1,min)
+      for (i in 1:nrow(median_distances)){
+        median_distances[i,(reference_clusters+1)] <- which(median_distances[1,] == min_dist[1])
+      }
+      
+      colnames(median_distances) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters),"Closest Ref Cluster")
+      
+      # Write the Chi_square_matrix matrix
+      write_table("DiBaAn-page 7 Median Distances.tab",median_distances,"table")
+      
+      # Table containing the observations per Group
+      median_table <- gtableGrob("Median distances from reference clusters",median_distances,setDT="YES",size=15)
+      
+      
+      
+      ###################################################################################
+      ##################### Statistical analysis of the clusters  #######################
+      #####################              and groups               #######################
+      ###################################################################################
+      
+      
+      
+      
+      ###################### Chi square test ###########################
+      
+      
+      if (length(reference_name) >= 2) {
+        reference_name <- c(paste(reference_name,collapse="+"))
+      }
+      
+      if (reference_clusters > 1) {
+        # Convert independent variable into factor to avoid errors
+        input_table[,1] <- as.factor(input_table[,1]) 
+        input_table[,1] <- factor(input_table[,1],levels=unique(input_table[,1]))
         
+        # Groups that will be used for the Chi square test
+        chi_levels <- levels(input_table[,1])
+        
+        # Initialization of the Chi_square_matrix
+        Chi_square_matrix <- data.frame(matrix(ncol = (length(chi_levels)) , nrow = reference_clusters))
+        # Naming the row and the columns of Chi_square_matrix
+        colnames(Chi_square_matrix) <- c(chi_levels)
+        rownames(Chi_square_matrix) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "))
+        
+        # Initialization of the chi_names vector
+        # Form a matrix where the number of observations for each cluster will be added
+        for (l in 1:length(chi_levels)){
+          for (c in 1:reference_clusters){
+            Chi_square_matrix[c,(l)] <-  length(which(distances_matrix[input_table[,1]==chi_levels[l],"Nearest reference cluster"] == c))
+          }
+        }
+        
+        #-----####-------####--------###--- Chi square test ---#####----####----####------####----------#
+        
+        
+        #--------------------- Chi square independence testing for reference Cluster(expected vs observed) --------------------------#
+        
+        # Conduct Chi square test
+        exp_p_value <- data.frame(round(chisq.test(Chi_square_matrix[,reference_name],p=c(rep(1/reference_clusters,reference_clusters)))$p.value,4))
         
         # Forming the data frame containing the p values
-        p_value <- data.frame(group_names)
-        # Naming the rows of the p_value data frame
-        p_value[,2] <- chi_p_value
-        # Convert p-values column into numeric
-        p_value[,2] <- as.numeric(p_value[,2])
-        # Performing fdr correction
-        adjustb <- round(p.adjust(c(p_value[,2]), method = "BH"),4)
-        # Add the adjusted p-values in the expected matrix
-        p_value[,3]<- adjustb
-        # Naming the columns of p_value data frame
-        colnames(p_value) <- c("Groups","P-values","Adj p-values")
+        colnames(exp_p_value) <- c("p value")
+        # Naming the rows of the exp_p_value data frame
+        rownames(exp_p_value) <- c("expected vs observed")
         
         
-
-        # Order the p-values
-        p_value <- p_value[order(p_value[,3]),]
-        # Choose the first 10 most significant p-values
-        if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
-      }
-
-      
-      #--------------------------------- Prepare the tables for the pdf------------------------#
-      
-      if (chi_square == 1){
-        # Write the Chi_square_matrix matrix
-        write_table("DiBaAn-page 9 Table 1.tab",Chi_square_matrix,"table")
+        #--------------------- Chi square goodness of fit testing for Groups --------------------------#
+        if (any(Test_name != "None")) {
+          combs <- combs(levels(input_table[,1]), 2)
+          # Save the names of that combinations
+          group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+          
+          # Replace 0 with 0.01
+          Chi_square_matrix[Chi_square_matrix == 0] <- 0.01
+          
+          # P_value -> a vector where the p values will be stored
+          chi_p_value <- c(); test <- c()
+          for(chi in 1:nrow(combs)) { 
+            # Performed the Chi square test
+            chi_p_value[chi] <- round(chisq.test(Chi_square_matrix[,combs[chi,2]],p=Chi_square_matrix[,combs[chi,1]],rescale.p = TRUE)$p.value,4)
+          }
+          
+          
+          # Replace 0.1 with 0.0
+          Chi_square_matrix[Chi_square_matrix == 0.01] <- 0
+          
+          # Forming the data frame containing the p values
+          p_value <- data.frame(group_names)
+          # Naming the rows of the p_value data frame
+          p_value[,2] <- chi_p_value
+          # Convert p-values column into numeric
+          p_value[,2] <- as.numeric(p_value[,2])
+          # Performing fdr correction
+          adjustb <- round(p.adjust(c(p_value[,2]), method = "BH"),4)
+          # Add the adjusted p-values in the expected matrix
+          p_value[,3]<- adjustb
+          # Naming the columns of p_value data frame
+          colnames(p_value) <- c("Groups","P-values","Adj p-values")
+          
+          
+          
+          # Order the p-values
+          p_value <- p_value[order(p_value[,3]),]
+          # Choose the first 10 most significant p-values
+          if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
+        }
         
-      }else{
-        # Write the Chi_square_matrix matrix
-        write_table("DiBaAn-page 8 Table 1.tab",Chi_square_matrix,"table")
-      }
-      
-      if (sum(nchar(colnames(Chi_square_matrix))) < 40) {
-      # Table containing the observations per Group
-      DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",Chi_square_matrix,setDT="YES",size=12)
-      } else {
-        chi_matrix_large <- data.frame(rbind("The table is too large to be printed!!",
-                                       "* The results are at the results folder"))
-        colnames(chi_matrix_large) <- c("")
-        DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",chi_matrix_large,setDT="NO",size=12)
         
+        #--------------------------------- Prepare the tables for the pdf------------------------#
+        
+        if (chi_square == 1){
+          # Write the Chi_square_matrix matrix
+          write_table("DiBaAn-page 9 Table 1.tab",Chi_square_matrix,"table")
+          
+        }else{
+          # Write the Chi_square_matrix matrix
+          write_table("DiBaAn-page 8 Table 1.tab",Chi_square_matrix,"table")
+        }
+        
+        if (sum(nchar(colnames(Chi_square_matrix))) < 40) {
+          # Table containing the observations per Group
+          DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",Chi_square_matrix,setDT="YES",size=12)
+        } else {
+          chi_matrix_large <- data.frame(rbind("The table is too large to be printed!!",
+                                               "* The results are at the results folder"))
+          colnames(chi_matrix_large) <- c("")
+          DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",chi_matrix_large,setDT="NO",size=12)
+          
+        }
+        
+        
+        
+        
+        ######################################################################################################################################################
+        ##########################################################  Visualization ############################################################################  
+        ######################################################################################################################################################
+        
+        
+        #---------------------------------- Calculate percentages of each cluster -------------------------------#
+        
+        
+        # Convert Chi_square_matrix into data frame
+        Chi_square_matrix <- data.frame(Chi_square_matrix)
+        
+        
+        # Forming the data frame where the percentages will be saved
+        percentage <- data.frame(c(paste("Cluster",1:reference_clusters,sep="")))
+        if (ncol(Chi_square_matrix) == 1){
+          colsum <- sum (Chi_square_matrix[1:nrow(Chi_square_matrix),1])
+        } else {
+          colsum <- colSums(Chi_square_matrix[,1:ncol(Chi_square_matrix)])
+        }
+        
+        for(p in 1:ncol(Chi_square_matrix)) {
+          # Calculating the percentages
+          percentage <- data.frame(percentage,round((Chi_square_matrix[,(p)]/colsum[p])*100,1))}
+        # Name the columns
+        colnames(percentage) <- c("Clusters",chi_levels)
+        
+        
+        # Transformation of the percentages data frame in order to be plotted
+        barplot_percentage <- data.frame(pivot_longer(percentage, cols = 2:ncol(percentage), names_to = "GROUP"))
+        # Naming the columns
+        colnames(barplot_percentage) <- c("Clusters","GROUP","Percentages")
+        
+        # Create a vector with the colours for the barplot
+        barplot_percentage[,"GROUP"] <- as.factor(barplot_percentage[,"GROUP"])
+        color <- colour_matrix[levels(barplot_percentage[,"GROUP"]),2]
+        
+        # Barplot of the percentages
+        barplot <- ggplot(data=barplot_percentage, aes(x=Clusters, y=Percentages, fill=GROUP)) +
+          geom_bar(stat="identity", position=position_dodge())+
+          geom_text(aes(label=Percentages), vjust=1.6,position = position_dodge(0.9), size=3.5)+
+          ylab("Percentage (%)")+
+          scale_fill_manual(breaks=c(levels(as.factor(barplot_percentage[,"GROUP"]))), values=color)+
+          theme_classic()
+        
+        
+        # Table containing the percentages of each cluster
+        percentage_table <- gtableGrob("",percentage,setDT="NO",size=18)
+        
+        
+        
+        #--------------------------------- Prepare the tables for the pdf------------------------#
+        
+        if (any(Test_name != "None")) {
+          
+          if (chi_square == 1){
+            
+            # Write the Chi_square_matrix
+            write_table("DiBaAn-page 9 Table 2.tab",p_value,"table")
+            
+          }else{
+            
+            # Write the Chi_square_matrix
+            write_table("DiBaAn-page 8 Table 2.tab",p_value,"table")
+          }
+          
+          
+          # Table containing p values of groups independence testing
+          chisquare_pvalues <- gtableGrob("P-values of Chi square test\n Goodness of fit test- (Table 2)",p_value2,setDT="NO",size=12)
+          
+        }
       }
       
-      
-      
-      
-      ######################################################################################################################################################
-      ##########################################################  Visualization ############################################################################  
-      ######################################################################################################################################################
-      
-      
-      #---------------------------------- Calculate percentages of each cluster -------------------------------#
-      
-      
-      # Convert Chi_square_matrix into data frame
-      Chi_square_matrix <- data.frame(Chi_square_matrix)
-      
-      
-      # Forming the data frame where the percentages will be saved
-      percentage <- data.frame(c(paste("Cluster",1:reference_clusters,sep="")))
-      if (ncol(Chi_square_matrix) == 1){
-        colsum <- sum (Chi_square_matrix[1:nrow(Chi_square_matrix),1])
-      } else {
-        colsum <- colSums(Chi_square_matrix[,1:ncol(Chi_square_matrix)])
-      }
-      
-      for(p in 1:ncol(Chi_square_matrix)) {
-        # Calculating the percentages
-        percentage <- data.frame(percentage,round((Chi_square_matrix[,(p)]/colsum[p])*100,1))}
-      # Name the columns
-      colnames(percentage) <- c("Clusters",chi_levels)
-      
-      
-      # Transformation of the percentages data frame in order to be plotted
-      barplot_percentage <- data.frame(pivot_longer(percentage, cols = 2:ncol(percentage), names_to = "GROUP"))
-      # Naming the columns
-      colnames(barplot_percentage) <- c("Clusters","GROUP","Percentages")
-      
-      # Create a vector with the colours for the barplot
-      barplot_percentage[,"GROUP"] <- as.factor(barplot_percentage[,"GROUP"])
-      color <- colour_matrix[levels(barplot_percentage[,"GROUP"]),2]
-      
-      # Barplot of the percentages
-      barplot <- ggplot(data=barplot_percentage, aes(x=Clusters, y=Percentages, fill=GROUP)) +
-        geom_bar(stat="identity", position=position_dodge())+
-        geom_text(aes(label=Percentages), vjust=1.6,position = position_dodge(0.9), size=3.5)+
-        ylab("Percentage (%)")+
-        scale_fill_manual(breaks=c(levels(as.factor(barplot_percentage[,"GROUP"]))), values=color)+
-        theme_classic()
-      
-      
-      # Table containing the percentages of each cluster
-      percentage_table <- gtableGrob("",percentage,setDT="NO",size=18)
-      
-      
-      
-      #--------------------------------- Prepare the tables for the pdf------------------------#
       
       if (any(Test_name != "None")) {
         
-        if (chi_square == 1){
-          
-          # Write the Chi_square_matrix
-          write_table("DiBaAn-page 9 Table 2.tab",p_value,"table")
-          
-        }else{
-          
-          # Write the Chi_square_matrix
-          write_table("DiBaAn-page 8 Table 2.tab",p_value,"table")
-        }
+        ################################################################################################################################
+        #-------------------------- Boxplots presenting the differences between the reference clusters  -------------------------------#
+        #--------------------------     and the samples that are closer to each of these clusters       -------------------------------#
+        #--------------------------                            (plot 1)                                 -------------------------------#
+        ################################################################################################################################
         
         
-        # Table containing p values of groups independence testing
-        chisquare_pvalues <- gtableGrob("P-values of Chi square test\n Goodness of fit test- (Table 2)",p_value2,setDT="NO",size=12)
+        # Subset the Reference samples from the plot_matrix
+        cluster_dist_ref <- plot_matrix[rownames(input_table[which(input_table[,1] %in% reference_name),]),]
+        # Subset the Test samples from the plot_matrix
+        cluster_dist_test <- plot_matrix[rownames(input_table[which(input_table[,1] %in% levels),]),]
         
-      }
-    }
-    
-    
-    
-    if (any(Test_name != "None")) {
-      
-      ################################################################################################################################
-      #-------------------------- Boxplots presenting the differences between the reference clusters  -------------------------------#
-      #--------------------------     and the samples that are closer to each of these clusters       -------------------------------#
-      #--------------------------                            (plot 1)                                 -------------------------------#
-      ################################################################################################################################
-      
-      
-      # Subset the Reference samples from the plot_matrix
-      cluster_dist_ref <- plot_matrix[rownames(input_table[which(input_table[,1] %in% reference_name),]),]
-      # Subset the Test samples from the plot_matrix
-      cluster_dist_test <- plot_matrix[rownames(input_table[which(input_table[,1] %in% levels),]),]
-      
-      
-      # dist_plot_1 -> matrix with the clusters that have been formed based on the the distances from the closest reference medoid (DB) 
-      dist_plot_1 <- c()
-      
-      for (j in 1:reference_clusters) {
-        # dist1 -> Auxiliary matrix with the distances of the reference samples from the closest reference medoid
-        dist1 <- cluster_dist_ref[cluster_dist_ref$Nearest.reference.cluster == j,c(ncol(plot_matrix),(j+1))]
-        # Create a column with the index of the closest reference cluster
-        dist1[,3] <- c(rep(j,nrow(dist1)))
-        # Name the columns
-        colnames(dist1) <- c("names","distances","cluster")
         
-        # dist3 -> Auxiliary matrix with the distances of the reference samples and test samples
-        dist3 <- c()
-        for (k in 1:length(levels)){
-          # Form a temporary matrix with the distances of each test group
-          temporary_matrix <- plot_matrix[input_table[,1] == levels[k],]
-          # dist2 -> Auxiliary matrix with the distances of the test samples from the closest reference medoid
-          dist2 <- temporary_matrix[temporary_matrix$Nearest.reference.cluster == j,c(ncol(plot_matrix),(j+1))]
-          # Create a column with the index of the closest reference cluster
-          dist2[,3] <- c(rep(j,nrow(dist2)))
-          # Name the columns
-          colnames(dist2) <- c("names","distances","cluster")
-          dist3 <- rbind(dist3,dist2)
-        }
-        
-        # Final dist_plot_1 matrix
-        dist_plot_1 <- rbind(dist_plot_1,dist1,dist3)
-      }
-      
-      
-      # Convert first column into character
-      dist_plot_1[,1] <- as.character(dist_plot_1[,1])
-      
-      # Replace zeros with NAs
-      dist_plot_1[dist_plot_1 == 0] <- NA
-      
-      # Calculate and add the prevalence of the groups
-      dist_plot_1 <- data.frame(dist_plot_1,label=prevalence(dist_plot_1,column=2))
-      
-      # Convert label column into factor
-      dist_plot_1$label <- factor(dist_plot_1$label,levels = unique(dist_plot_1$label))
-      
-      # Create a new data frame that will be used for the graphs
-      plot_df_a <- cbind.data.frame(Group=as.factor(dist_plot_1[,1]),abundance = as.numeric(dist_plot_1[,2]),label = factor(dist_plot_1[,4]))
-      
-      # Store the colours that will be used in the plot
-      color <- colour_matrix[levels(factor(plot_df_a[,1],levels = unique(plot_df_a[,1]))),2]
-      
-      
-      #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
-      
-      if (chi_square==1){
-        
-        # Calculate the p-values of the Wilcoxon Rank sum test 
-        pvalues2 <- pvalues_function2(dist_plot_1,3,"DiBaAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+2+10))
-      } else {
-        # Calculate the p-values of the Wilcoxon Rank sum test 
-        pvalues2 <- pvalues_function2(dist_plot_1,3,"DiBaAn-",11)
-      }
-
-      
-      
-      # gtable of the p-values
-      pvaltable <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
-      
-      #------------------#
-      
-      
-      #------------------------ Create the Plots -------------------------#
-      
-      # The name that will be used as the title for the plots 
-      my_name <- paste0("Closest Reference Cluster")
-      
-      
-      # Save the boxplot object in the list
-      list_box <- my_boxplot(my_name,plot_df_a,label,abundance,colour=color)
-      
-      # Save the boxplot with points object in the list
-      list_point <- my_point_boxplot(my_name,plot_df_a,label,abundance,color)
-      
-      # Save the violin object in the list
-      list_violin <- my_violinplot(my_name,plot_df_a,label,abundance,color)
-      
-      
-      
-      #################################################################################################
-      #------------------------- Comparative boxplots of Groups for self-medoids  --------------------# 
-      #-------------------------          and minimum reference distance          --------------------#
-      #-------------------------                  (plot 2)                        --------------------#
-      #################################################################################################
-      
-      
-      # In the end, plots based on Category and Cluster columns will be generated 
-      
-      
-      #---------------------- Making all the necessary objects -------------------- #
-      
-      # Making an object for lists of boxplot
-      list_box2 <- list()
-      
-      # Making an object for lists of point boxplot
-      list_point2 <- list()
-      
-      # Making an object for lists of violin boxplot
-      list_violin2 <- list()
-      
-      # Making a list for pairwise p-value table of Wilcoxon test
-      pvaltable2 <- list()
-      
-      
-      
-      #-----------------------------------------------------------------------------#  
-      
-      # Convert independent variables (1st column) into factor in order to avoid errors
-      input_table[,1] <- as.factor(input_table[,1]) 
-      input_table[,1] <- factor(input_table[,1],levels=unique(input_table[,1]))
-      
-      
-      # Find all the individual groups of the independent variable
-      Levels <- levels(input_table[,1]) 
-      
-      
-      for (j in 4:ncol(input_table)) {
-        
-        # Delete label column
-        input_table$label <- NULL
-        
-        # Calculate and add the prevalence of the groups
-        input_table <- data.frame(input_table,label=prevalence(input_table,column=j))
-        
-        # Create a new data frame that will be used for the graphs
-        plot_df <- cbind.data.frame(Group=as.factor(input_table[,1]),abundance = as.numeric(input_table[,j]),label = factor(input_table[,6], levels = unique(input_table[,6])))
-        
-        # Store the colours that will be used in the plot
-        color <- colour_matrix[levels(factor(plot_df[,1],levels = unique(plot_df[,1]))),2]
-        
-        
-        #------------------- Wilcoxon Rank Sum Test p.values ----------------------#
-        
-        if (j == 4){pages <- 4} else {pages <- 6}
-        
-        # Calculate the p-values of the Wilcoxon Rank sum test 
-        pvalues2 <- pvalues_function(plot_df,"DiBaAn-",pages)
-        
-        
-        # Create a gtable containing text grobs 
-        pvaltable2[[j-3]] <- list()
-        pvaltable2[[j-3]] <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
-        
-        #--------------------#
-        
-        
-        
-        #------------------------ Plots -------------------------#
-        
-        # The name that will be used as the title for the plots 
-        my_name <- c("Category","Clusters",paste("Distances From Self Medoid","(",reference_clusters,"clusters",")"),paste0("Distances From Self-",central_point, " (1 cluster)"),"Closest Reference Cluster")[j]
-        
-        
-        
-        # Save the boxplot object in the list
-        plot_df$label <- factor(plot_df$label,levels = unique(plot_df$label))
-        list_box2[[j-3]] <- list()
-        list_box2[[j-3]] <- my_boxplot(my_name,plot_df,label,abundance,color)
-        
-        
-        # Save the boxplot with points object in the list
-        list_point2[[j-3]] <- list()
-        list_point2[[j-3]] <- my_point_boxplot(my_name,plot_df,label,abundance,color)
-        
-        # Save the violin object in the list
-        list_violin2[[j-3]] <- list()
-        list_violin2[[j-3]] <- my_violinplot(my_name,plot_df,label,abundance,color)
-        
-        
-      }
-      
-      #-----------------#
-      
-      
-      
-      
-      if (index == 0) {
-        
-        
-        #########################################################################################################################
-        #--------------------------     Compare the compactness of the cluster that divived from -------------------------------#
-        #--------------------------     the de novo clustering of the reference and test groups  -------------------------------#
-        #--------------------------                          (plot 3)                            -------------------------------#
-        #########################################################################################################################
-        
-        
-        
-        # Form the vector with the distances from the closest self medoid
-        # de_novo_distances -> Vector where the distances will be placed
-        de_novo_distances <- c()
-        
-        
-        # Test subclusters
-        l <- levels(as.factor(denovo_clusters[meta_file[,mapping_column] %in% Test_name]))
-        for(i in 1:length(l)){
-          if (central_point == "medoid"){
-            # Perform PAM clustering for every test cluster
-            de_novo_pam <-pam(unifract_dist[names(denovo_clusters[denovo_clusters == l[i]]),names(denovo_clusters[denovo_clusters == l[i]])], 1, diss=TRUE)[["medoids"]]
-            # Distances from the self medoids
-            pam_distances <-as.numeric(unifract_dist[de_novo_pam,c(names(denovo_clusters[denovo_clusters == l[i]]))])
-          } else {
-            pam_distances <-as.numeric(unifract_dist2[l[i],c(names(denovo_clusters[denovo_clusters == l[i]]))])
-            
-          }
-          # Naming the distances vector
-          names(pam_distances) <- names(denovo_clusters[denovo_clusters == l[i]])
-          de_novo_distances <- c(de_novo_distances,pam_distances)
-        }
-        
-        # Add the reference subclusters
-        denovo_distances <- c(minimum_reference_distance[input_table[,1]%in%reference_name],de_novo_distances)
-        denovo_distances <- denovo_distances[names(denovo_clusters)]
-        
-        
-        
-        # Form data frame with the de novo clusters and the distances from the closest self-medoid
-        dist_plot_3 <- data.frame(denovo_clusters,as.numeric(denovo_distances))
-        
-        
-        # Replace zeros with NAs
-        dist_plot_3[dist_plot_3 == 0] <- NA
-        
-        # Calculate and add the prevalence of the groups
-        dist_plot_3 <- data.frame(dist_plot_3,label=prevalence(dist_plot_3,column=2))
-        
-        # Convert label column into factor
-        dist_plot_3$label <- factor(dist_plot_3$label,levels = unique(dist_plot_3$label))
-        
-        # Create a new data frame that will be used for the graphs
-        plot_df <- cbind.data.frame(Group=as.factor(dist_plot_3[,1]),abundance = as.numeric(dist_plot_3[,2]),label = factor(dist_plot_3[,3], levels=unique(dist_plot_3[,3])))
-        
-        # Store the colours that will be used in the plot
-        color <- colour_matrix[levels(factor(plot_df[,1],levels = unique(plot_df[,1]))),2]
-        
-        
-        
-        
-        #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
-        if (chi_square == 1){
-          
-          # Calculate the p-values of the Wilcoxon Rank sum test 
-          pvalues2 <- pvalues_function(dist_plot_3,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+5))
-          
-        } else {
-        # Calculate the p-values of the Wilcoxon Rank sum test 
-        pvalues2 <- pvalues_function(dist_plot_3,"DeNoAn-",5)
-        }
-        
-        # gtable of the p-values
-        pvaltable3 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
-        
-        #---------------------------#
-        
-        
-        #------------------------  Create the Plots -------------------------#
-        
-        # The name that will be used as the title for the plots 
-        my_name <- paste0("Distances From Self-",central_point)
-        
-        # Save the boxplot object in the list
-        list_box3 <- my_boxplot(my_name,plot_df,label,abundance,color)
-        
-        # Save the boxplot with points object in the list
-        list_point3<- my_point_boxplot(my_name,plot_df,label,abundance,color)
-        
-        # Save the violin object in the list
-        list_violin3 <- my_violinplot(my_name,plot_df,label,abundance,color)
-        
-        
-        
-        
-        
-        
-        
-        #########################################################################################################################
-        #--------------------------    Compare the distances of the de novo based clusters from     ----------------------------#
-        #--------------------------    the closest(based on the median distance) reference group   -----------------------------#
-        #--------------------------                           (plot 4)                             -----------------------------#
-        #########################################################################################################################
-        
-        
-        
-        
-        ###################### Median and observations matrices ####################################
-        
-        # median_matrix -> data frame with the median distance of each test subcluster from the reference clusters
-        median_matrix <- data.frame()
-        
-        # matrix_median ->
-        matrix_median <- c()
-        
-        # max_observations -> 
-        max_observations <- c()
-        
-        # observations_matrtix -> matrix with the observations
-        observations_matrtix <- data.frame()
-        
-        for (i in 1:length(levels)){
-          # Subset from the plot_matrix the samples of each test group
-          temporary_matrix <- plot_matrix[meta_file[,mapping_column] == levels[i],]
-          # Vector with the factors of the temporary_matrix
-          levels_matrix <- as.factor(unique(temporary_matrix[,1]))
-          
-          for(j in 1:length(levels_matrix)){
-            for (l in 1:reference_clusters){
-              # Find the median distance of ecsh test subcluster from every reference cluster
-              matrix_median[l] <- round(median(temporary_matrix[temporary_matrix[,1] == levels_matrix[j],(l+1)]),3)
-              # Find the number of the samples of every test cluster that are closer to each reference cluster
-              max_observations[l] <- sum(temporary_matrix[temporary_matrix[,1] == levels_matrix[j],"Nearest.reference.cluster"] == l, na.rm = TRUE)
-            }
-            # Find the minimun median distance
-            matrix_median[(reference_clusters+1)] <- which(matrix_median==min(matrix_median))
-            median_matrix <- rbind(median_matrix,matrix_median)
-            # Name the rows of the median_matrix
-            rownames(median_matrix)[nrow(median_matrix)] <-as.character(levels_matrix[j])
-            # Name the columns of the median_matrix
-            colnames(median_matrix) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "),"Closest Ref cluster")
-            
-            # Create the matrix with the observations
-            observations_matrtix <- rbind(observations_matrtix,max_observations)
-            # Name the rows of the observations_matrtix
-            rownames(observations_matrtix)[nrow(observations_matrtix)] <-as.character(levels_matrix[j])
-            # Name the columns of the observations_matrtix
-            colnames(observations_matrtix) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "))
-          }
-        }
-        
-        # Final matrix containing the median distances of the test clusters from the reference clusters
-        median_matrix <- data.frame(rownames(median_matrix),median_matrix)
-        # Naming the columns of the median_matrix
-        colnames(median_matrix) <- c("",c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "),"Closest Ref cluster"))
-        
-        
-        
-        
-        # dist_plot_4 ->  matrix showing the closest test cluster for every reference cluster based on the median distances
-        dist_plot_4 <- c()
+        # dist_plot_1 -> matrix with the clusters that have been formed based on the the distances from the closest reference medoid (DB) 
+        dist_plot_1 <- c()
         
         for (j in 1:reference_clusters) {
-          # Forming for every cluster the appropriate distance matrix
-          which <- which(median_matrix[,ncol(median_matrix)] == j)
-          
-          # dist1 -> aucillary matrix for the test groups showing the closest reference cluster
-          dist1 <- cluster_dist_test[cluster_dist_test[,1]%in% rownames(median_matrix)[which],c(1,(j+1))]
+          # dist1 -> Auxiliary matrix with the distances of the reference samples from the closest reference medoid
+          dist1 <- cluster_dist_ref[cluster_dist_ref$Nearest.reference.cluster == j,c(ncol(plot_matrix),(j+1))]
+          # Create a column with the index of the closest reference cluster
           dist1[,3] <- c(rep(j,nrow(dist1)))
+          # Name the columns
           colnames(dist1) <- c("names","distances","cluster")
           
-          # dist1 -> aucillary matrix for the test groups
-          dist2 <- cluster_dist_ref[cluster_dist_ref$Nearest.reference.cluster == j,c(1,(j+1))]
-          dist2[,1] <- c(rep(paste(paste(reference_name,collapse="+"),j),nrow(dist2)))
-          dist2[,3] <- c(rep(j,nrow(dist2)))
+          # dist3 -> Auxiliary matrix with the distances of the reference samples and test samples
+          dist3 <- c()
+          for (k in 1:length(levels)){
+            # Form a temporary matrix with the distances of each test group
+            temporary_matrix <- plot_matrix[input_table[,1] == levels[k],]
+            # dist2 -> Auxiliary matrix with the distances of the test samples from the closest reference medoid
+            dist2 <- temporary_matrix[temporary_matrix$Nearest.reference.cluster == j,c(ncol(plot_matrix),(j+1))]
+            # Create a column with the index of the closest reference cluster
+            dist2[,3] <- c(rep(j,nrow(dist2)))
+            # Name the columns
+            colnames(dist2) <- c("names","distances","cluster")
+            dist3 <- rbind(dist3,dist2)
+          }
           
-          colnames(dist2) <- c("names","distances","cluster")
-          
-          #Form the final dist_plot_4 matrix
-          dist_plot_4 <- rbind(dist_plot_4,dist2,dist1)
+          # Final dist_plot_1 matrix
+          dist_plot_1 <- rbind(dist_plot_1,dist1,dist3)
         }
         
+        
         # Convert first column into character
-        dist_plot_4[,1] <- as.character(dist_plot_4[,1])
+        dist_plot_1[,1] <- as.character(dist_plot_1[,1])
         
         # Replace zeros with NAs
-        dist_plot_4[dist_plot_4 == 0] <- NA
+        dist_plot_1[dist_plot_1 == 0] <- NA
         
         # Calculate and add the prevalence of the groups
-        dist_plot_4 <- data.frame(dist_plot_4,label=prevalence(dist_plot_4,column=2))
+        dist_plot_1 <- data.frame(dist_plot_1,label=prevalence(dist_plot_1,column=2))
         
         # Convert label column into factor
-        dist_plot_4$label <- factor(dist_plot_4$label,levels = unique(dist_plot_4$label))
-        
-        
+        dist_plot_1$label <- factor(dist_plot_1$label,levels = unique(dist_plot_1$label))
         
         # Create a new data frame that will be used for the graphs
-        plot_df_b <- cbind.data.frame(Group=as.factor(dist_plot_4[,1]),abundance = as.numeric(dist_plot_4[,2]),label = factor(dist_plot_4[,4]))
+        plot_df_a <- cbind.data.frame(Group=as.factor(dist_plot_1[,1]),abundance = as.numeric(dist_plot_1[,2]),label = factor(dist_plot_1[,4]))
         
         # Store the colours that will be used in the plot
-        color <- colour_matrix[levels(factor(plot_df_b[,1],levels = unique(plot_df_b[,1]))),2]
+        color <- colour_matrix[levels(factor(plot_df_a[,1],levels = unique(plot_df_a[,1]))),2]
         
         
         #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
         
-        if (chi_square == 1){ 
-          
-          # Calculate the p-values of the Wilcoxon Rank sum test 
-          pvalues2 <- pvalues_function2(dist_plot_4,3,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+9))
-          
-          } else {
-            
-          # Calculate the p-values of the Wilcoxon Rank sum test 
-          pvalues2 <- pvalues_function2(dist_plot_4,3,"DeNoAn-",9)
-        }
-
+        # !!!! The p values are calculated in line 3789 !!!!
         
-        
-        # gtable of the p-values
-        pvaltable4 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
-        
-        #--------------------#
-        
+        #------------------#
         
         
         #------------------------ Create the Plots -------------------------#
         
         # The name that will be used as the title for the plots 
-        my_name <- paste0("Closest reference cluster")
+        my_name <- paste0("Closest Reference Cluster")
+        
         
         # Save the boxplot object in the list
-        list_box4 <- my_boxplot(my_name,plot_df_b,label,abundance,color)
+        list_box <- my_boxplot(my_name,plot_df_a,label,abundance,colour=color)
         
         # Save the boxplot with points object in the list
-        list_point4 <- my_point_boxplot(my_name,plot_df_b,label,abundance,color)
+        list_point <- my_point_boxplot(my_name,plot_df_a,label,abundance,color)
         
         # Save the violin object in the list
-        list_violin4 <- my_violinplot(my_name,plot_df_b,label,abundance,color)
+        list_violin <- my_violinplot(my_name,plot_df_a,label,abundance,color)
         
         
         
-        #--------Create a list of text--------------#
-        
-        if (chi_square == 1){
-          write_table(paste("DeNoAn-page", (length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+6), "Table.tab"),observations_matrtix,"table")
-        }else{
-          write_table("DeNoAn-page 6 Table.tab",observations_matrtix,"table")}
-        
-        # Create a gtable containing text grobs of the observations_matrtix (will be used later)
-        observation <- gtableGrob("Closest Reference cluster",observations_matrtix,setDT="YES",size=15)
-        
-        if(chi_square == 1){
-          write_table(paste("DeNoAn-page",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+8) , "Table.tab"),median_matrix,"table")
-        }else{
-          write_table("DeNoAn-page 8 Table.tab",median_matrix,"table")}
-        
-        # Create a gtable containing text grobs of the median_matrix (will be used later)
-        median_matrix_table <- gtableGrob("Median distances from reference clusters",median_matrix,setDT="NO",size=15)
+        #################################################################################################
+        #------------------------- Comparative boxplots of Groups for self-medoids  --------------------# 
+        #-------------------------          and minimum reference distance          --------------------#
+        #-------------------------                  (plot 2)                        --------------------#
+        #################################################################################################
         
         
+        # In the end, plots based on Category and Cluster columns will be generated 
         
         
-        ######################################################################################################################
-        #-------------------------- Compare the distances of the de novo based clusters from  -------------------------------#
-        #--------------------------              the closest reference medoid                 -------------------------------#
-        #--------------------------                         (plot 5)                          -------------------------------#
-        ######################################################################################################################      
+        #---------------------- Making all the necessary objects -------------------- #
         
+        # Making an object for lists of boxplot
+        list_box2 <- list()
         
-        # Form the matrix with the distances of the samples from the closest reference medois
-        reference_distances <- summarized_distance_matrix[,c(1,5)]
-        # Reorder the rows of the reference_distances matrix
-        reference_distances <- reference_distances[names(denovo_clusters),]
-        # Add in the first column the de novo based clusters
-        reference_distances[,1] <- as.factor(c(denovo_clusters))
-        # Naming the rows 
-        rownames(reference_distances) <- rownames(summarized_distance_matrix)
+        # Making an object for lists of point boxplot
+        list_point2 <- list()
         
-        # Subset the Reference samples from the distances matrix
-        cluster_dist_ref_b <- summarized_distance_matrix[rownames(input_table[which(input_table[,1] %in% reference_name),]),c(1,5)]
+        # Making an object for lists of violin boxplot
+        list_violin2 <- list()
+        
+        # Making a list for pairwise p-value table of Wilcoxon test
+        pvaltable2 <- list()
         
         
         
-        # Forming for every cluster the appropriate distance matrix
-        dist_plot_5 <- rbind(cluster_dist_ref_b ,reference_distances[rownames(input_table[which(input_table[,1 ]%in% levels),]),])
+        #-----------------------------------------------------------------------------#  
         
-        # Convert first column into character
-        dist_plot_5[,1] <- as.character(dist_plot_5[,1])
-        
-        # Calculate and add the prevalence of the groups
-        dist_plot_5 <- data.frame(dist_plot_5,label=prevalence(dist_plot_5,column=2))
-        
-        #-----#
-        
-        # Convert label column into factor
-        dist_plot_5$label <- factor(dist_plot_5$label,levels = unique(dist_plot_5$label))
+        # Convert independent variables (1st column) into factor in order to avoid errors
+        input_table[,1] <- as.factor(input_table[,1]) 
+        input_table[,1] <- factor(input_table[,1],levels=unique(input_table[,1]))
         
         
-        # Create a new data frame that will be used for the graphs
-        plot_df <- cbind.data.frame(Group=as.factor(dist_plot_5[,1]),abundance = as.numeric(dist_plot_5[,2]),label = factor(dist_plot_5[,3]))
-        
-        # Store the colours that will be used in the plot
-        color <- colour_matrix[levels(factor(plot_df[,1],levels = unique(plot_df[,1]))),2]
+        # Find all the individual groups of the independent variable
+        Levels <- levels(input_table[,1]) 
         
         
-        #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
-        
-        if (chi_square == 1){
+        for (j in 4:ncol(input_table)) {
+          
+          # Delete label column
+          input_table$label <- NULL
+          
+          # Calculate and add the prevalence of the groups
+          input_table <- data.frame(input_table,label=prevalence(input_table,column=j))
+          
+          # Create a new data frame that will be used for the graphs
+          plot_df <- cbind.data.frame(Group=as.factor(input_table[,1]),abundance = as.numeric(input_table[,j]),label = factor(input_table[,6], levels = unique(input_table[,6])))
+          
+          # Store the colours that will be used in the plot
+          color <- colour_matrix[levels(factor(plot_df[,1],levels = unique(plot_df[,1]))),2]
+          
+          
+          #------------------- Wilcoxon Rank Sum Test p.values ----------------------#
+          
+          if (j == 4){pages <- 4} else {pages <- 6}
           
           # Calculate the p-values of the Wilcoxon Rank sum test 
-          pvalues2 <- pvalues_function(dist_plot_5,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+7))
-        } else {
+          pvalues2 <- pvalues_function(plot_df,"DiBaAn-",pages)
           
-        # Calculate the p-values of the Wilcoxon Rank sum test 
-        pvalues2 <- pvalues_function(dist_plot_5,"DeNoAn-",7)
+          
+          # Create a gtable containing text grobs 
+          pvaltable2[[j-3]] <- list()
+          pvaltable2[[j-3]] <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
+          
+          #--------------------#
+          
+          
+          
+          #------------------------ Plots -------------------------#
+          
+          # The name that will be used as the title for the plots 
+          my_name <- c("Category","Clusters",paste("Distances From Self Medoid","(",reference_clusters,"clusters",")"),paste0("Distances From Self-",central_point, " (1 cluster)"),"Closest Reference Cluster")[j]
+          
+          
+          
+          # Save the boxplot object in the list
+          plot_df$label <- factor(plot_df$label,levels = unique(plot_df$label))
+          list_box2[[j-3]] <- list()
+          list_box2[[j-3]] <- my_boxplot(my_name,plot_df,label,abundance,color)
+          
+          
+          # Save the boxplot with points object in the list
+          list_point2[[j-3]] <- list()
+          list_point2[[j-3]] <- my_point_boxplot(my_name,plot_df,label,abundance,color)
+          
+          # Save the violin object in the list
+          list_violin2[[j-3]] <- list()
+          list_violin2[[j-3]] <- my_violinplot(my_name,plot_df,label,abundance,color)
+          
+          
         }
         
-        # Create a gtable containing text grobs 
-        pvaltable5 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
-        
-        #------------------#
+        #-----------------#
         
         
-        #------------------------ Plots -------------------------#
-        
-        # The name that will be used as the title for the plots 
-        my_name <- paste("Closest Reference",central_point)
-        
-        # Save the boxplot object in the list
-        list_box5 <- my_boxplot(my_name,plot_df,label,abundance,color)
-        
-        # Save the boxplot with points object in the list
-        list_point5 <- my_point_boxplot(my_name,plot_df,label,abundance,color)
-        
-        # Save the violin object in the list
-        list_violin5 <- my_violinplot(my_name,plot_df,label,abundance,color)
-        
+        if (index == 0) {
+          
+          
+          #########################################################################################################################
+          #--------------------------     Compare the compactness of the cluster that divived from -------------------------------#
+          #--------------------------     the de novo clustering of the reference and test groups  -------------------------------#
+          #--------------------------                          (plot 3)                            -------------------------------#
+          #########################################################################################################################
+          
+          
+          
+          # Form the vector with the distances from the closest self medoid
+          # de_novo_distances -> Vector where the distances will be placed
+          de_novo_distances <- c()
+          
+          
+          # Test subclusters
+          l <- levels(as.factor(denovo_clusters[meta_file[,mapping_column] %in% Test_name]))
+          for(i in 1:length(l)){
+            if (central_point == "medoid"){
+              # Perform PAM clustering for every test cluster
+              de_novo_pam <-pam(unifract_dist[names(denovo_clusters[denovo_clusters == l[i]]),names(denovo_clusters[denovo_clusters == l[i]])], 1, diss=TRUE)[["medoids"]]
+              # Distances from the self medoids
+              pam_distances <-as.numeric(unifract_dist[de_novo_pam,c(names(denovo_clusters[denovo_clusters == l[i]]))])
+            } else {
+              pam_distances <-as.numeric(unifract_dist2[l[i],c(names(denovo_clusters[denovo_clusters == l[i]]))])
+              
+            }
+            # Naming the distances vector
+            names(pam_distances) <- names(denovo_clusters[denovo_clusters == l[i]])
+            de_novo_distances <- c(de_novo_distances,pam_distances)
+          }
+          
+          # Add the reference subclusters
+          denovo_distances <- c(minimum_reference_distance[input_table[,1]%in%reference_name],de_novo_distances)
+          denovo_distances <- denovo_distances[names(denovo_clusters)]
+          
+          
+          
+          # Form data frame with the de novo clusters and the distances from the closest self-medoid
+          dist_plot_3 <- data.frame(denovo_clusters,as.numeric(denovo_distances))
+          
+          
+          # Replace zeros with NAs
+          dist_plot_3[dist_plot_3 == 0] <- NA
+          
+          # Calculate and add the prevalence of the groups
+          dist_plot_3 <- data.frame(dist_plot_3,label=prevalence(dist_plot_3,column=2))
+          
+          # Convert label column into factor
+          dist_plot_3$label <- factor(dist_plot_3$label,levels = unique(dist_plot_3$label))
+          
+          # Create a new data frame that will be used for the graphs
+          plot_df <- cbind.data.frame(Group=as.factor(dist_plot_3[,1]),abundance = as.numeric(dist_plot_3[,2]),label = factor(dist_plot_3[,3], levels=unique(dist_plot_3[,3])))
+          
+          # Store the colours that will be used in the plot
+          color <- colour_matrix[levels(factor(plot_df[,1],levels = unique(plot_df[,1]))),2]
+          
+          
+          #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
+          if (chi_square == 1){
+            
+            # Calculate the p-values of the Wilcoxon Rank sum test 
+            pvalues2 <- pvalues_function(dist_plot_3,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+5))
+            
+          } else {
+            # Calculate the p-values of the Wilcoxon Rank sum test 
+            pvalues2 <- pvalues_function(dist_plot_3,"DeNoAn-",5)
+          }
+          
+          # gtable of the p-values
+          pvaltable3 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
+          
+          #---------------------------#
+          
+          
+          #------------------------  Create the Plots -------------------------#
+          
+          # The name that will be used as the title for the plots 
+          my_name <- paste0("Distances From Self-",central_point)
+          
+          # Save the boxplot object in the list
+          list_box3 <- my_boxplot(my_name,plot_df,label,abundance,color)
+          
+          # Save the boxplot with points object in the list
+          list_point3<- my_point_boxplot(my_name,plot_df,label,abundance,color)
+          
+          # Save the violin object in the list
+          list_violin3 <- my_violinplot(my_name,plot_df,label,abundance,color)
+          
+          
+          
+          
+          #########################################################################################################################
+          #--------------------------    Compare the distances of the de novo based clusters from     ----------------------------#
+          #--------------------------    the closest(based on the median distance) reference group   -----------------------------#
+          #--------------------------                           (plot 4)                             -----------------------------#
+          #########################################################################################################################
+          
+          
+          ###################### Median and observations matrices ####################################
+          
+          # median_matrix -> data frame with the median distance of each test subcluster from the reference clusters
+          median_matrix <- data.frame()
+          
+          # matrix_median ->
+          matrix_median <- c()
+          
+          # max_observations -> 
+          max_observations <- c()
+          
+          # observations_matrtix -> matrix with the observations
+          observations_matrtix <- data.frame()
+          
+          for (i in 1:length(levels)){
+            # Subset from the plot_matrix the samples of each test group
+            temporary_matrix <- plot_matrix[meta_file[,mapping_column] == levels[i],]
+            # Vector with the factors of the temporary_matrix
+            levels_matrix <- as.factor(unique(temporary_matrix[,1]))
+            
+            for(j in 1:length(levels_matrix)){
+              for (l in 1:reference_clusters){
+                # Find the median distance of ecsh test subcluster from every reference cluster
+                matrix_median[l] <- round(median(temporary_matrix[temporary_matrix[,1] == levels_matrix[j],(l+1)]),3)
+                # Find the number of the samples of every test cluster that are closer to each reference cluster
+                max_observations[l] <- sum(temporary_matrix[temporary_matrix[,1] == levels_matrix[j],"Nearest.reference.cluster"] == l, na.rm = TRUE)
+              }
+              # Find the minimun median distance
+              matrix_median[(reference_clusters+1)] <- which(matrix_median==min(matrix_median))
+              median_matrix <- rbind(median_matrix,matrix_median)
+              # Name the rows of the median_matrix
+              rownames(median_matrix)[nrow(median_matrix)] <-as.character(levels_matrix[j])
+              # Name the columns of the median_matrix
+              colnames(median_matrix) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "),"Closest Ref cluster")
+              
+              # Create the matrix with the observations
+              observations_matrtix <- rbind(observations_matrtix,max_observations)
+              # Name the rows of the observations_matrtix
+              rownames(observations_matrtix)[nrow(observations_matrtix)] <-as.character(levels_matrix[j])
+              # Name the columns of the observations_matrtix
+              colnames(observations_matrtix) <- c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "))
+            }
+          }
+          
+          # Final matrix containing the median distances of the test clusters from the reference clusters
+          median_matrix <- data.frame(rownames(median_matrix),median_matrix)
+          # Naming the columns of the median_matrix
+          colnames(median_matrix) <- c("",c(paste(paste(reference_name,collapse="+"),1:reference_clusters,sep=" "),"Closest Ref cluster"))
+          
+          
+          
+          # dist_plot_4 ->  matrix showing the closest test cluster for every reference cluster based on the median distances
+          dist_plot_4 <- c()
+          
+          for (j in 1:reference_clusters) {
+            # Forming for every cluster the appropriate distance matrix
+            which <- which(median_matrix[,ncol(median_matrix)] == j)
+            
+            # dist1 -> aucillary matrix for the test groups showing the closest reference cluster
+            dist1 <- cluster_dist_test[cluster_dist_test[,1]%in% rownames(median_matrix)[which],c(1,(j+1))]
+            dist1[,3] <- c(rep(j,nrow(dist1)))
+            colnames(dist1) <- c("names","distances","cluster")
+            
+            # dist1 -> aucillary matrix for the test groups
+            dist2 <- cluster_dist_ref[cluster_dist_ref$Nearest.reference.cluster == j,c(1,(j+1))]
+            dist2[,1] <- c(rep(paste(paste(reference_name,collapse="+"),j),nrow(dist2)))
+            dist2[,3] <- c(rep(j,nrow(dist2)))
+            
+            colnames(dist2) <- c("names","distances","cluster")
+            
+            #Form the final dist_plot_4 matrix
+            dist_plot_4 <- rbind(dist_plot_4,dist2,dist1)
+          }
+          
+          # Convert first column into character
+          dist_plot_4[,1] <- as.character(dist_plot_4[,1])
+          
+          # Replace zeros with NAs
+          dist_plot_4[dist_plot_4 == 0] <- NA
+          
+          # Calculate and add the prevalence of the groups
+          dist_plot_4 <- data.frame(dist_plot_4,label=prevalence(dist_plot_4,column=2))
+          
+          # Convert label column into factor
+          dist_plot_4$label <- factor(dist_plot_4$label,levels = unique(dist_plot_4$label))
+          
+          
+          # Create a new data frame that will be used for the graphs
+          plot_df_b <- cbind.data.frame(Group=as.factor(dist_plot_4[,1]),abundance = as.numeric(dist_plot_4[,2]),label = factor(dist_plot_4[,4]))
+          
+          # Store the colours that will be used in the plot
+          color <- colour_matrix[levels(factor(plot_df_b[,1],levels = unique(plot_df_b[,1]))),2]
+          
+          
+          #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
+          
+          if (chi_square == 1){ 
+            
+            # Calculate the p-values of the Wilcoxon Rank sum test 
+            pvalues2 <- pvalues_function2(dist_plot_4,reference_clusters,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+9))
+            
+          } else {
+            
+            # Calculate the p-values of the Wilcoxon Rank sum test 
+            pvalues2 <- pvalues_function2(dist_plot_4,reference_clusters,"DeNoAn-",9)
+          }
+          
+          
+          # gtable of the p-values
+          pvaltable4 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
+          
+          #--------------------#
+          
+          
+          
+          #------------------------ Create the Plots -------------------------#
+          
+          # The name that will be used as the title for the plots 
+          my_name <- paste0("Closest reference cluster")
+          
+          # Save the boxplot object in the list
+          list_box4 <- my_boxplot(my_name,plot_df_b,label,abundance,color)
+          
+          # Save the boxplot with points object in the list
+          list_point4 <- my_point_boxplot(my_name,plot_df_b,label,abundance,color)
+          
+          # Save the violin object in the list
+          list_violin4 <- my_violinplot(my_name,plot_df_b,label,abundance,color)
+          
+          
+          
+          #--------Create a list of text--------------#
+          
+          if (chi_square == 1){
+            write_table(paste("DeNoAn-page", (length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+6), "Table.tab"),observations_matrtix,"table")
+          }else{
+            write_table("DeNoAn-page 6 Table.tab",observations_matrtix,"table")}
+          
+          # Create a gtable containing text grobs of the observations_matrtix (will be used later)
+          observation <- gtableGrob("Closest Reference cluster",observations_matrtix,setDT="YES",size=15)
+          
+          if(chi_square == 1){
+            write_table(paste("DeNoAn-page",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+8) , "Table.tab"),median_matrix,"table")
+          }else{
+            write_table("DeNoAn-page 8 Table.tab",median_matrix,"table")}
+          
+          # Create a gtable containing text grobs of the median_matrix (will be used later)
+          median_matrix_table <- gtableGrob("Median distances from reference clusters",median_matrix,setDT="NO",size=15)
+          
+          
+          
+          
+          ######################################################################################################################
+          #-------------------------- Compare the distances of the de novo based clusters from  -------------------------------#
+          #--------------------------              the closest reference medoid                 -------------------------------#
+          #--------------------------                         (plot 5)                          -------------------------------#
+          ######################################################################################################################      
+          
+          
+          # Form the matrix with the distances of the samples from the closest reference medois
+          reference_distances <- summarized_distance_matrix[,c(1,5)]
+          # Reorder the rows of the reference_distances matrix
+          reference_distances <- reference_distances[names(denovo_clusters),]
+          # Add in the first column the de novo based clusters
+          reference_distances[,1] <- as.factor(c(denovo_clusters))
+          # Naming the rows 
+          rownames(reference_distances) <- rownames(summarized_distance_matrix)
+          
+          # Subset the Reference samples from the distances matrix
+          cluster_dist_ref_b <- summarized_distance_matrix[rownames(input_table[which(input_table[,1] %in% reference_name),]),c(1,5)]
+          
+          
+          
+          # Forming for every cluster the appropriate distance matrix
+          dist_plot_5 <- rbind(cluster_dist_ref_b ,reference_distances[rownames(input_table[which(input_table[,1 ]%in% levels),]),])
+          
+          # Convert first column into character
+          dist_plot_5[,1] <- as.character(dist_plot_5[,1])
+          
+          # Calculate and add the prevalence of the groups
+          dist_plot_5 <- data.frame(dist_plot_5,label=prevalence(dist_plot_5,column=2))
+          
+          #-----#
+          
+          # Convert label column into factor
+          dist_plot_5$label <- factor(dist_plot_5$label,levels = unique(dist_plot_5$label))
+          
+          
+          # Create a new data frame that will be used for the graphs
+          plot_df <- cbind.data.frame(Group=as.factor(dist_plot_5[,1]),abundance = as.numeric(dist_plot_5[,2]),label = factor(dist_plot_5[,3]))
+          
+          # Store the colours that will be used in the plot
+          color <- colour_matrix[levels(factor(plot_df[,1],levels = unique(plot_df[,1]))),2]
+          
+          
+          #------------------- Wilcoxon Rank Sum Test p.values  ----------------------#
+          
+          if (chi_square == 1){
+            
+            # Calculate the p-values of the Wilcoxon Rank sum test 
+            pvalues2 <- pvalues_function(dist_plot_5,"DeNoAn-",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+7))
+          } else {
+            
+            # Calculate the p-values of the Wilcoxon Rank sum test 
+            pvalues2 <- pvalues_function(dist_plot_5,"DeNoAn-",7)
+          }
+          
+          # Create a gtable containing text grobs 
+          pvaltable5 <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
+          
+          #------------------#
+          
+          
+          #------------------------ Plots -------------------------#
+          
+          # The name that will be used as the title for the plots 
+          my_name <- paste("Closest Reference",central_point)
+          
+          # Save the boxplot object in the list
+          list_box5 <- my_boxplot(my_name,plot_df,label,abundance,color)
+          
+          # Save the boxplot with points object in the list
+          list_point5 <- my_point_boxplot(my_name,plot_df,label,abundance,color)
+          
+          # Save the violin object in the list
+          list_violin5 <- my_violinplot(my_name,plot_df,label,abundance,color)
+          
+        }
       }
-    }
-    
-    
-    #########################################################################################################################################################
-    ###############################################           Write Output Files in Separate folder        ##################################################
-    #########################################################################################################################################################
-    
-    
-    
-    
-    ########################################################
-    #################  Print the plots   ###################
-    ########################################################
-    
-    
-    
-    setwd(results_path)
-    
-    
-    
-    if (reference_clusters>1) {
+      
+      
+      #########################################################################################################################################################
+      ###############################################           Write Output Files in Separate folder        ##################################################
+      #########################################################################################################################################################
+      
+      
+      
+      
+      ########################################################
+      #################  Print the plots   ###################
+      ########################################################
+      
       
       # Print the MDS plot only for the reference clusters
-      png_plot(paste0("MDS reference clusters k=",reference_clusters,".png"),
-               sclass(unifract_dist[input_table[,1] %in% reference_name,input_table[,1]%in%reference_name],factor(mapping_cluster[which(input_table[,1] %in% reference_name)], levels=unique(mapping_cluster[which(input_table[,1] %in% reference_name)])),
-                      NULL, colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2]))
+      if (reference_clusters>1) {
+        png_plot(paste0("MDS reference clusters k=",reference_clusters,".png"),
+                 sclass(unifract_dist[input_table[,1] %in% reference_name,input_table[,1]%in%reference_name],factor(mapping_cluster[which(input_table[,1] %in% reference_name)], levels=unique(mapping_cluster[which(input_table[,1] %in% reference_name)])),
+                        NULL, colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2]))
+      }
       
-    }
-    
-    if (any(Test_name != "None")){
-      
-      setwd(plots_path)
-      
-      # Print the MDS plot where all the test samples are represented as individual points
-      pdf("DiBaAn-page 5 MDS Plot.pdf")
-      
-      layout(matrix(c(1, 1, 1,
-                      2, 2, 2,
-                      3, 3, 3), nrow=3, byrow=TRUE),heights=c(0.3,3,0.3) )
-      
-      par(mar = c(0.1, 0.1, 0.1, 0.1))
-      
-      plot.new()
-      
-      
-      sclass(unifract_dist,as.factor(mapping_cluster[which(input_table[,1] %in% reference_name)]),as.factor(mapping_cluster[which(input_table[,1] %in% levels)]),
-             colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2] )
-      par(mar = c(0.1, 0.1, 0.1, 0.1))
-      
-      plot.new()
-      
-      
-      dev.off()
-      
-      
+      if (reference_clusters_in == "Automated"){
+        # Set the plots_path
+        setwd(plots_path)
+        
+        # Print the CH indices for the reference group
+        pdf("Calinski-Harabasz for the reference group.pdf")
+        plot(2:9,reference_CH, type="h", xlab="k clusters", ylab="CH index",main=paste('Calinski-Harabasz scores of the',reference_name,'group'))
+        lines(x=(reference_clusters),y=reference_CH[reference_clusters-1],type="h",col="red")
+        dev.off()
+      }
       
       # Return to results path
       setwd(outputs_path)
-    }
-    
-    
-    
-    if (any(Test_name != "None")) {
       
       
-      ########################################################################################
-      #################################      REPORTS         #################################
-      ########################################################################################
       
-      
-      
-      
-      #################################################
-      ########## Distances-based report ###############
-      #################################################
-      
-      
-      # Initialize the list that  will later contain the plots
-      boxplot_list <- list()
-      pointplot_list <- list()
-      violinplot_list <- list()
-      
-      if (index == 0 & any(Test_name != "None")) {
-      # Open a PDF file to store the outputs
-      pdf("1.Distances-based report.pdf")
-      } else {
-        # Open a PDF file to store the outputs
-        pdf("Distances-based report.pdf") 
-      }
-      
-      
-      
-      ######### Cover page #############
-      
-      # Index indicating the page of the report
-      page <- 1
-      
-      # Set the layout of the cover page
-      layout( matrix(c(1,1), ncol=1))
-      # Default margins
-      par(mar= c(5.1, 4.1, 8, 2.1))
-      
-      # Create an empty plot 
-      plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      # Title of the plot
-      title(main=paste0("Distances Based Analysis\n","(DiBaAn-",central_point,")"),cex.main = 1.75,font.main = 2)
-      # Description of this PDF
-      text(x = 0.5, y = 0.5, paste0("This report includes the results derived from the analysis of the distances\n",
-                                    "of the test samples from their closest reference ", central_point,".\n",
-                                    "The Reference samples were clustered into ",reference_clusters, " distinct groups based on\n",
-                                    "the results of the PAM algorithm. The remaining samples of the test \n groups ",
-                                    "were compared with the ",central_point,"s of the reference clusters\n",
-                                    "\n\n","* All the elements of this report (plots and tables) will be found in the \n results folder with the prefix DiBaAn-"),cex = 1.1, col = "black",font = 3)
-      
-      # Default margins
-      par(mar= c(5.1, 4.1, 4.1, 2.1))
-      
-      
-      
-      ########## Page 2 ############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      # Set the layout of the cover page (3 rows, 1 column)
-      layout(matrix(c(1, 1, 1,
-                      2, 2, 2,
-                      3, 3, 3), nrow=3, byrow=TRUE),heights=c(1,3,0.3))
-      
-      # Create an empty plot
-      plot.new()
-      # Title of the plot
-      title(main="MDS Plot",cex.main = 1.7,font.main = 2)
-      # Text of the plot
-      text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n",
-                                   "and the test samples (", paste(Test_name,collapse="-"), ") " ),cex = 1.5, col = "black")
-      
-      # MDS plot where the refernce groups has been clustered and all the test samples are represented as individual points
-      sclass(unifract_dist,factor(input_table[,1],levels=unique(input_table[,1])),NULL,colour_matrix[levels(factor(input_table[,1],levels=unique(input_table[,1]))),2] )
-      
-      # Set narrow margings for the last plot
-      par(mar = c(0.1, 0.1, 0.1, 0.1))
-      # Create an empty plot
-      plot.new()
-      
-      # Default margins
-      par(mar= c(5.1, 4.1, 4.1, 2.1))
-      
-      # Print the MDS plot in png format
-      png_plot(paste("DiBaAn-page",page,"MDS plot.png"),
-               sclass(unifract_dist,factor(input_table[,1],levels=unique(input_table[,1])),NULL,colour_matrix[levels(factor(input_table[,1],levels=unique(input_table[,1]))),2] ))
-      
-      
-      
-      
-      ########## Page 3 ###########
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Title of the 3rd page
-      text <- "Phylogram"
-      # Create a text grob for the title
-      tgrob1 <- text_grob(text, face = "bold.italic", color = "Black",size=16)
-      
-      # Description of the Phylogram
-      text2 <- paste0("Phylogram of the reference (",paste(reference_name,collapse="+"),") and test (", paste(Test_name,collapse="-"), ")\n" , "samples")
-      # Create a text grob for the Description
-      tgrob2 <- text_grob(text2, face = "italic", color = "Black",size=12)
-      
-      # Tree of the reference end test groups
-      tree_plot <- tree(unifract_dist,factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column])),
-                        colour_matrix[levels(factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column]))),2] )
-      
-      
-      # Arrange in the grid the above elements
-      grid.arrange(tgrob1,tgrob2,tree_plot,nrow = 3,heights=c(0.5,0.5,2.5))
-      
-      # Print the Phylogram in png format
-      png_plot(paste("DiBaAn-page",page,"Phylogram.png"),tree_plot)
-      
-      
-      ############ Page 4 ##############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Description of the list_box2[[1]]
-      text <- paste0(plot_type," displaying the distribution of the distances around their own self-",central_point,".\n",
-                     "This plot can provide additional information about the compactness of the groups.")
-      # Create a text grob for the Description of the list_box2[[1]]
-      tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
-      
-      
-      # Choose the selected type of plot
-      if (plot_type == "Boxplots") {plot <-list_box2[[1]] } else if (plot_type == "Point plots") {plot <-list_point2[[1]] } else {plot <-list_violin2[[1]]}
-      
-      # Arrange in the grid the above elements
-      grid.arrange(arrangeGrob( plot,pvaltable2[[1]],nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
-      
-      # Print the plot in png format
-      png_plot(paste("DiBaAn-page",page,plot_type,".png"),plot)
-      
-      
-      
-      ########## Page 5 ############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Set the layout of the cover page (3 rows, 1 column)
-      layout(matrix(c(1, 1, 1,
-                      2, 2, 2,
-                      3, 3, 3), nrow=3, byrow=TRUE),heights=c(1.2,2.9,0.3))
-      
-      # Create an empty plot
-      plot.new()
-      # Title of the plot
-      title(main="MDS Plot",cex.main = 1.7,font.main = 2)
-      # Text of the plot
-      text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n"," clustered into ", test_clusters ," Groups\n",
-                                   "and the test samples (", paste(Test_name,collapse="-"), ") as individual points" ),cex = 1.5, col = "black")
-      
-      # MDS plot where the refernce groups has been clustered and all the test samples are represented as individual points
-      sclass(unifract_dist,as.factor(mapping_cluster[which(input_table[,1] %in% reference_name)]),as.factor(mapping_cluster[which(input_table[,1] %in% levels)]),
-             colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2] )
-      
-      # Set narrow margings for the last plot
-      par(mar = c(0.1, 0.1, 0.1, 0.1))
-      # Create an empty plot
-      plot.new()
-      
-      # Default margins
-      par(mar= c(5.1, 4.1, 4.1, 2.1))
-      
-      
-      ########## Page 6 ############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Description of the list_box2[[2]]
-      text <- paste0(plot_type," displaying the distribution of the distances around the closest referenece ",central_point,".\n",
-                     "For each sample of the test groups (",paste(Test_name,collapse="-"), ") the nearest reference ",central_point," \nwas found ", "and then these distances were calculated.")
-      
-      # Create a text grob for the Description of the list_box2[[2]]
-      tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
-      
-      # Choose the selected type of plot
-      if (plot_type == "Boxplots") {plot <-list_box2[[2]] } else if (plot_type == "Point plots") {plot <-list_point2[[2]] } else {plot <-list_violin2[[2]]}
-      
-      
-      # Arrange in the grid the above elements
-      grid.arrange(arrangeGrob( plot,pvaltable2[[2]],nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
-      
-      # Print the plot in png format
-      png_plot(paste("DiBaAn-page",page,plot_type,".png"),plot)
-      
-      
-      
-      ############ Page 7 ##########
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Title of the 7th page 
-      text1 <- "Distances from the closest reference cluster"
-      # Create a text grob for the title
-      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-      
-      # Description of the matrix of the median distances
-      text2 <- paste("For each group the median distance of the sample from \n every reference",central_point, "was calculated. \n Then, the closest reference cluster was found.\n")
-      # Create a text grob for the median matrix
-      tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=13)
-      
-      
-      # Arrange in the grid the above elements
-      grid.arrange(tgrob,median_table,tgrob2,nrow=3,heights=c(0.4,1,1.5))
-      
-      
-      if (reference_clusters > 1) {
+      if (any(Test_name != "None")){
         
-        ############ Page 8-undefined ##########
+        # Set the plots_path
+        setwd(plots_path)
         
-        if (chi_square == 1){
-          
-          # Index indicating the page of the report
-          page <- page+1
-          
-          # Tile of the page
-          text1 <- "Chi-square test \nGoodness of Fit analysis"
-          
-          # Create a text grob for the title
-          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
-          
-          # Text of the footnote
-          text2 <- paste("*For the next",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1),"pages")
-          
-          # Create a text grob for the footnote
-          tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
-          
-          # Arrange in the grid the above elements
-          grid.arrange(tgrob,tgrob2, nrow=2,heights=c(2,0.5))
-          
-        }
-        
-        # Index indicating the page of the report
-        page <- page+1
-        
-        # Tile of the 8th page
-        text1 <- paste("Distances from the closest reference",central_point)
-        
-        # Create a text grob for the title
-        tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-        
-        # Description of the two tables
-        text2 <- paste(" De novo clustering has been applied to the reference dataset.\n Following, the test samples have been clustered based on the distances \n from the closest reference", central_point, "(matrix on the left).
-                   \n The matrix on the right presents the p-values of the Chi square test for every \n pair of groups." )
-        
-        # Create a text grob for the description
-        tgrob2 <- text_grob(text2, face = "italic", color = "Black",size=12)
-        
-        # Arrange in the grid the above elements
-        grid.arrange(tgrob,arrangeGrob(DB_matrix_table,chisquare_pvalues,nrow=1),tgrob2,nrow=3,heights=c(0.4,1,1))
-        
-        
-        if (chi_square == 1){
-          for (k in 1:length(exploratory_columns)){
-            
-            # Index indicating the page of the report
-            page <- page+1
-            
-            # Check if the column is character of factor
-            if (is.character(meta_file[,exploratory_columns[k]])==TRUE |is.factor(meta_file[,exploratory_columns[k]])==TRUE ){
-              
-              # Tile of the page
-              text1 <- paste0("'",exploratory_columns[k],"' Column")
-              
-              # Create a text grob for the title
-              tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
-              
-              # Main text of the page
-              text <- paste0("The relationship between the reference clusters and the  '",exploratory_columns[k],"' column  \nwill be examined in the following pages.\n\n",
-                             "The distribution of the samples across the reference clusters is presented in Table(s) \nof the first line.\n\n",
-                             "Table 2 presents the p-values of the Chi-square test of the observed distribution \nof the counts against the expected distribution if the counts were \nuniformly distributed.\n\n",
-                             "Table 3 contains the p-values of the pairwise comparisons.\n\n",
-                             "The tables contain only the 10 most significant p-values. The rest of the p-values \nhave been printed in the results folder.")
-              
-              # Create a text grob for the text
-              tgrob2 <- text_grob(text,face = "italic", color = "Black",size=13)
-              
-              # Create a text grob for the footnote
-              text3 <- "*If the number of counts is limited or zero counts occurs, then the Chi-square approximation \n may be incorrect." 
-              
-              # Create a text grob for the footnote
-              tgrob3 <- text_grob(text3,face = "italic", color = "Black",size=11)
-              
-              # Arrange in the grid the above elements
-              grid.arrange(tgrob,tgrob2,tgrob3 ,nrow=3)
-              
-              
-              for(i in 1:length(Test_name)){
-                
-                # Index indicating the page of the report
-                page <- page+1
-                
-                # Subset the names of the reference group
-                names_ref <-rownames(input_table[which(input_table[,1] %in% reference_name),])
-                # Subset the names of each test group
-                names_test <- rownames(input_table[input_table[,1] == Test_name[i],])
-                
-                # Extract the factors of the reference group
-                factor_ref <- factor(meta_file[names_ref,exploratory_columns[k]],levels=unique(meta_file[names_ref,exploratory_columns[k]]))
-                # Extract the factors of each test group
-                factor_test <- factor(meta_file[names_test,exploratory_columns[k]],levels=unique(meta_file[names_test,exploratory_columns[k]]))
-                
-                if (nlevels(factor_ref) > 0 | nlevels(factor_test) > 0){
-                  # Check if one or two matrices will be formed 
-                  if (length(which(levels(factor_ref) %in% levels(factor_test) == TRUE)) > 1 & nlevels(factor_ref) > 1 & nlevels(factor_test) > 1){
-                    
-                    # Form the matrix where the counts of the observations will be placed
-                    chi_ref <- data.frame(matrix(ncol = (nlevels(factor_ref)) , nrow = reference_clusters))
-                    # Naming the rows of the chi_ref
-                    rownames(chi_ref) <- paste(reference_name,1:reference_clusters)
-                    # Naming the columns of the chi_ref
-                    colnames(chi_ref) <- levels(factor_ref)
-                    
-                    # Form the matrix where the counts of the observations will be placed
-                    chi_test <- data.frame(matrix(ncol = (nlevels(factor_test)) , nrow = reference_clusters))
-                    # Naming the rows of the chi_test
-                    rownames(chi_test) <- paste(reference_name,1:reference_clusters)
-                    # Naming the columns of the chi_ref
-                    colnames(chi_test) <- levels(factor_test)
-                    
-                    for (ii in 1:reference_clusters){
-                      # Subset the names of the reference group for each cluster
-                      names2_ref <- rownames(mapping_file[mapping_file[,1]==paste(reference_name,ii),])
-                      for (iii in 1:nlevels(factor_ref)){
-                        # Place the counts in the chi_ref
-                        chi_ref[ii,iii] <- length(which(meta_file[names2_ref,exploratory_columns[k]]==levels(factor_ref)[iii]))
-                      }
-                    }
-                    
-                    # Replace 0 with 0.01
-                    chi_ref[chi_ref == 0] <- 0.01
-                    
-                    for (ii in 1:reference_clusters){
-                      
-                      # Subset the names of the test group for each cluster
-                      names2_test <- distances_matrix[distances_matrix[,"Nearest reference cluster"] == ii,]
-                      names2_test <- rownames(names2_test[rownames(names2_test)%in% names_test,])
-                      
-                      for (iii in 1:nlevels(factor_test)){
-                        # Place the counts in the chi_test matrix
-                        chi_test[ii,iii] <- length(which(meta_file[names2_test,exploratory_columns[k]]==levels(factor_test)[iii]))
-                      }
-                    }
-                    
-                    # Replace 0 with 0.01
-                    chi_test[chi_test == 0] <- 0.01
-                    
-                    
-                    # Performing Chi-square test(Goodness of fit) for each column of chi_ref
-                    exp_col_ref <- apply(chi_ref,2,function(x) chisq.test(x)$p.value)
-                    
-                    # Performing Chi-square test(Goodness of fit) for each row of chi_ref
-                    exp <-apply(chi_ref,2,sum)/reference_clusters
-                    exp_r_ref <- apply(chi_ref,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value)
-                    
-                    # Performing Chi-square test(Goodness of fit) for each column of chi_test
-                    exp_col_test <- apply(chi_test,2,function(x) chisq.test(x)$p.value)
-                    
-                    # Performing Chi-square test(Goodness of fit) for each row of chi_test
-                    exp <-apply(chi_test,2,sum)/reference_clusters
-                    exp_r_test <- apply(chi_test,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value)
-                    
-                    # Performing fdr correction
-                    adjustb <- round(p.adjust(c(exp_col_ref,exp_r_ref,exp_col_test,exp_r_test), method = "BH"),4)
-                    # Add the adjusted p-values in the expected matrix
-                    expected <- data.frame(cbind(c(exp_col_ref,exp_r_ref,exp_col_test,exp_r_test),adjustb))
-                    # Naming the columns of p_value data frame
-                    colnames(expected) <- c( "P-values","Adj p-values")
-                    # Naming the rows of p_value data frame
-                    rownames(expected) <- c(paste(names(exp_col_ref),"(Ref)"),paste(names(exp_r_ref),"(Ref)"),paste0(names(exp_col_test),"(",Test_name[i],")"),paste(names(exp_r_test),"(",Test_name[i],")"))
-                    
-                    
-                    # Order the p-values
-                    expected <- expected[order(expected[,2]),]
-                    # Choose the first 10 most significant p-values
-                    if (nrow(expected)>10) {expected2 <- expected[1:10,]} else {expected2 <- expected}
-                    
-                    
-                    # Find all the available pairwise combinations for the reference group
-                    combs <- combs(levels(factor_ref), 2)
-                    # Save the names of that combinations
-                    group_names <- apply(combs,1,function(x)paste0(x[1],"(Ref)-",x[2],"(Ref)"))
-                    
-                    
-                    # P_value -> a vector where the p values will be stored
-                    chi_p_value_ref <- c(); test <- c()
-                    for(chii in 1:nrow(combs)) { 
-                      # Performed the Chi square test
-                      chi_p_value_ref[chii] <- round(chisq.test(chi_ref[,combs[chii,2]],p=chi_ref[,combs[chii,1]],rescale.p = TRUE)$p.value,4) 
-                      }
-                    
-                    #------------ Rows pairwise comparisons ----------#
-                    # Find all the available pairwise combinations for the reference group
-                    combs <- combs(rownames(chi_ref), 2)
-                    # Save the names of that combinations
-                    group_names_rows <- apply(combs,1,function(x)paste0(x[1],"(Ref)-",x[2],"(Ref)"))
-                    
-                    
-                    # P_value -> a vector where the p values will be stored
-                    chi_p_value_ref_rows <- c(); test <- c()
-                    for(chii in 1:nrow(combs)) { 
-                      # Performed the Chi square test
-                      chi_p_value_ref_rows[chii] <- round(chisq.test(as.numeric(chi_ref[combs[chii,2],]),p=as.numeric(chi_ref[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
-                    
-                    # Replace 0.01 with 0
-                    chi_ref[chi_ref == 0.01] <- 0
-                    
-                    
-                    # Forming the data frame containing the p values
-                    p_value_ref <- data.frame(group_names)
-                    # Naming the rows of the p_value data frame
-                    p_value_ref[,2] <- chi_p_value_ref
-                    # Naming the columns of p_value data frame
-                    colnames(p_value_ref) <- c("Groups","p value")
-                    
-                    
-                    # Forming the data frame containing the p values
-                    p_value_ref_rows <- data.frame(group_names_rows)
-                    # Naming the rows of the p_value data frame
-                    p_value_ref_rows[,2] <- chi_p_value_ref_rows
-                    # Naming the columns of p_value data frame
-                    colnames(p_value_ref_rows) <- c("Groups","p value")
-                    
-                    # Find all the available pairwise combinations for the test groups
-                    combs <- combs(levels(factor_test), 2)
-                    # Save the names of that combinations
-                    group_names <- apply(combs,1,function(x)paste0(x[1],"(",Test_name[i],")-",x[2],"(",Test_name[i],")"))
-                    
-                    
-                    # P_value -> a vector where the p values will be stored
-                    chi_p_value_test <- c(); test <- c()
-                    for(chii in 1:nrow(combs)) { 
-                      # Performed the Chi square test
-                      chi_p_value_test[chii] <- round(chisq.test(chi_test[,combs[chii,2]],p=chi_test[,combs[chii,1]],rescale.p = TRUE)$p.value,4)
-                      }
-                    
-                    
-                    #------------ Rows pairwise comparisons ----------#
-                    
-                    # Find all the available pairwise combinations for the test groups
-                    combs <- combs(rownames(chi_test), 2)
-                    # Save the names of that combinations
-                    group_names_rows <- apply(combs,1,function(x)paste0(x[1],"(",Test_name[i],")-",x[2],"(",Test_name[i],")"))
-                    
-                    
-                    # P_value -> a vector where the p values will be stored
-                    chi_p_value_test_rows <- c(); test <- c()
-                    for(chii in 1:nrow(combs)) { 
-                      # Performed the Chi square test
-                      chi_p_value_test_rows[chii] <- round(chisq.test(as.numeric(chi_test[combs[chii,2],]),p=as.numeric(chi_test[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
-                    
-                    # Replace 0.01 with 0
-                    chi_test[chi_test == 0.01] <- 0
-                    
-                    
-                    
-                    # Forming the data frame containing the p values
-                    p_value_test <- data.frame(group_names)
-                    # Naming the rows of the p_value data frame
-                    p_value_test[,2] <- chi_p_value_test
-                    # Naming the columns of p_value data frame
-                    colnames(p_value_test) <- c("Groups","p value")
-                    
-                    
-                    # Forming the data frame containing the p values
-                    p_value_test_rows <- data.frame(group_names_rows)
-                    # Naming the rows of the p_value data frame
-                    p_value_test_rows[,2] <- chi_p_value_test_rows
-                    # Naming the columns of p_value data frame
-                    colnames(p_value_test_rows) <- c("Groups","p value")
-                    
-                    
-                    
-                    # Form a data frame where the p-values for the coompn factors will be placed 
-                    common <- data.frame()
-                    # row index initiation
-                    row <- 0
-                    for(l in 1:nlevels(factor_ref)){
-                      
-                      if (length(which(levels(factor_ref)[l] == levels(factor_test)) == 1)){
-                        # Add a row
-                        row <- row+1
-                        # Add the name of the row
-                        common[row,1] <- paste0(levels(factor_ref)[l],"(Ref) -",levels(factor_ref)[l],"(",Test_name[i],")")
-                        # Perform Chi-square test
-                        common[row,2] <-  round(chisq.test(chi_test[,levels(factor_ref)[l]],p=chi_ref[,levels(factor_ref)[l]],rescale.p = TRUE)$p.value,4)
-                        # Naming the columns
-                        colnames(common) <- c("Groups","p value")
-                      }
-                    }
-                    
-                    # rbind all the p-values
-                    p_value <- rbind(p_value_ref,p_value_test,p_value_ref_rows,p_value_test_rows,common)
-                    
-                    # Convert p-values column into numeric
-                    p_value[,2] <- as.numeric(p_value[,2])
-                    # Perform fdr correction
-                    p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)
-                    # Add the adjusted p-values in the pvalues matrix
-                    p_value[,3] <- p.adjust
-                    # Naming the columns of p_value data frame
-                    colnames(p_value) <- c("Groups","p value","Adj p-values")
-                    # Order the p-values
-                    p_value <- p_value[order(p_value[,3]),]
-                    # Choose the first 10 most significant p-values
-                    if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
-                    
-                    # Write Reference counts table at result folder
-                    write_table(paste0("DiBaAn-page ",page," ",reference_name," Group (Table 1).tab"),chi_ref,"table")
-                    # Write test counts table at result folder
-                    write_table(paste0("DiBaAn-page ",page," ",Test_name[i]," Group (Table 2).tab"),chi_test,"table")
-                    # Write Expected-observed p-values at result folder
-                    write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
-                    # Write pairwise p-values at result folder
-                    write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
-                    
-                    if ((sum(nchar(colnames(chi_ref)))+sum(nchar(colnames(chi_test)))) < 80){
-                      # Tile of the page
-                      text1 <- paste0(exploratory_columns[k],"-",Test_name[i])
-                      
-                      # Create a text grob for the title
-                      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-                      
-                      # Tile of the p-value tables
-                      text1 <- "P-values of the Chi-square test (Goodness of Fit)"
-                      
-                      # Create a text grob for the title
-                      tgrob2 <- text_grob(text1,face = "bold.italic", color = "Black",size=12)
-                      
-                      # Arrange in the grid the above elements
-                      grid.arrange(tgrob,arrangeGrob(gtableGrob(paste(reference_name,"Group (Table 1)"),chi_ref,setDT="YES",size=12),gtableGrob(paste(Test_name[i],"Group (Table 2)"),chi_test,setDT="YES",size=12),nrow=1)
-                                   , arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1))
-                                   , ncol = 1, nrow = 3,heights=c(0.4,1,2))
-                    } else {
-                      text1 <- paste(exploratory_columns[k],"-",Test_name[i])
-                      
-                      # Create a text grob for the title
-                      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-                      
-                      # Tile of the p-value tables
-                      text2 <-"The tables are too big to be printed!!\nYou can find them in .tab format in the results folder."
-                      
-                      # Create a text grob for the title
-                      tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
-                      
-                      grid.arrange(tgrob,tgrob2,nrow=2)
-                    }
-                    
-                    
-                  } else {
-                    
-                    # Form the matrix where the counts of the observations will be placed
-                    chi_matrix <- data.frame(matrix(ncol = (nlevels(factor_ref)+nlevels(factor_test)) , nrow = reference_clusters))
-                    # Naming the rows of the chi matrix
-                    rownames(chi_matrix) <- paste(reference_name,1:reference_clusters)
-                    if (nlevels(factor_ref) == 0){
-                      # Naming the columns of the chi matrix
-                      colnames(chi_matrix) <- c(paste(paste0(levels(factor(factor_test,levels=unique(factor_test))),"(",Test_name[i],")")))
-                    }else if (nlevels(factor_test) == 0){
-                      # Naming the columns of the chi matrix
-                      colnames(chi_matrix) <- c(paste(levels(factor(factor_ref,levels=unique(factor_ref))),"(Ref)"))
-                    } else {
-                      # Naming the columns of the chi matrix
-                      colnames(chi_matrix) <- c(paste(levels(factor(factor_ref,levels=unique(factor_ref))),"(Ref)"),paste0(levels(factor(factor_test,levels=unique(factor_test))),"(",Test_name[i],")"))
-                    }
-                    
-                    if (nlevels(factor_ref) > 0){
-                      for (ii in 1:reference_clusters){
-                        # Subset the names of the reference group
-                        names2 <- rownames(mapping_file[mapping_file[,1] == paste(reference_name,ii),])
-                        for (iii in 1:nlevels(factor_ref)){
-                          # Place the counts of the reference group in the chi matrix
-                          chi_matrix[ii,iii] <- length(which(meta_file[names2,exploratory_columns[k]]==levels(factor_ref)[iii]))
-                        }
-                      }
-                    }
-                    
-                    if (nlevels(factor_test) > 0){
-                      for (ii in 1:reference_clusters){
-                        # Subset the names of the test group for each cluster
-                        names2_test <- distances_matrix[distances_matrix[,"Nearest reference cluster"] == ii,]
-                        names2_test <- rownames(names2_test[rownames(names2_test) %in% names_test,])
-                        
-                        
-                        for (iii in 1:nlevels(factor_test)){
-                          # Place the counts of the test group in the chi matrix
-                          chi_matrix[ii,(iii+nlevels(factor_ref))] <- length(which(meta_file[names2_test,exploratory_columns[k]] == levels(factor_test)[iii]))
-                        }
-                      }
-                    }
-                    
-                    # Replace 0 with 0.01
-                    chi_matrix[chi_matrix == 0] <- 0.01
-                    
-                    # Performing Chi-square test(Goodness of fit) for each column
-                    exp_col <- apply(chi_matrix,2,function(x) chisq.test(x)$p.value)
-                    
-                    if (ncol(chi_matrix) > 1){
-                      # Performing Chi-square test(Goodness of fit) for each row
-                      exp <-apply(chi_matrix,2,sum)/reference_clusters 
-                      exp_r <- apply(chi_matrix,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value)
-                      
-                      
-                      # Performing fdr correction
-                      adjustb <- round(p.adjust(c(exp_col,exp_r), method = "BH"),4)
-                      # Add the adjusted p-values in the pvalues matrix
-                      expected <- data.frame(cbind(c(exp_col,exp_r),adjustb))
-                      colnames(expected) <- c( "P-values","Adj p-values")
-                      
-                    } else {
-                      
-                      # Performing fdr correction
-                      adjustb <- round(p.adjust(c(exp_col), method = "BH"),4)
-                      # Add the adjusted p-values in the pvalues matrix
-                      expected <- data.frame(cbind(exp_col,adjustb))
-                      # Naming the rows of p_value data frame
-                      rownames(expected) <- c(names(exp_col))
-                    }
-                    # Naming the columns of expected data frame
-                    colnames(expected) <- c( "P-values","Adj p-values")
-                    
-                    
-                    # Order the p-values
-                    expected <- expected[order(expected[,2]),]
-                    # Choose the first 10 most significant p-values
-                    if (nrow(expected) > 10) {expected2 <- expected[1:10,]} else {expected2 <- expected}
-                    
-                    if(ncol(chi_matrix) > 1){
-                      # Find all the available pairwise combinations
-                      combs <- combs(colnames(chi_matrix),2)
-                      # Save the names of that combinations
-                      group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
-                      
-                      
-                      # P_value -> a vector where the p values will be stored
-                      chi_p_value <- c(); test <- c()
-                      for(chii in 1:nrow(combs)) { 
-                        # Performed the Chi square test
-                        chi_p_value[chii] <- round(chisq.test(chi_matrix[,combs[chii,2]],p=chi_matrix[,combs[chii,1]],rescale.p = TRUE)$p.value,4) }
-                      
-                      #---------- Rows pairwise comparisons ----------#
-                      
-                      # Find all the available pairwise combinations
-                      combs <- combs(rownames(chi_matrix),2)
-                      # Save the names of that combinations
-                      group_names_rows <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
-                      
-                      
-                      # P_value -> a vector where the p values will be stored
-                      chi_p_value_rows <- c(); test <- c()
-                      for(chii in 1:nrow(combs)) { 
-                        # Performed the Chi square test
-                        chi_p_value_rows[chii] <- round(chisq.test(as.numeric(chi_matrix[combs[chii,2],]),p=as.numeric(chi_matrix[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
-                      
-                      # Replace 0.01 with 0
-                      chi_matrix[chi_matrix == 0.01] <- 0
-                      
-                      
-                      # Forming the data frame containing the p values
-                      p_value <- data.frame(group_names)
-                      # Naming the rows of the p_value data frame
-                      p_value[,2] <- chi_p_value
-                      # Naming the columns of p_value data frame
-                      colnames(p_value) <- c("Groups","p value")
-                      
-                      
-                      # Forming the data frame containing the p values
-                      p_value_rows <- data.frame(group_names_rows)
-                      # Naming the rows of the p_value data frame
-                      p_value_rows[,2] <- chi_p_value_rows
-                      # Naming the columns of p_value data frame
-                      colnames(p_value_rows) <- c("Groups","p value")
-                      
-                      # rbind all the p-values
-                      p_value <- rbind(p_value,p_value_rows)
-                      
-                      
-                      # Convert p-values column into numeric
-                      p_value[,2] <- as.numeric(p_value[,2])
-                      # Performing fdr correction
-                      p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)  
-                      # Add the adjusted p-values in the pvalues matrix
-                      p_value[,3] <- p.adjust
-                      # Naming the columns of p_value data frame
-                      colnames(p_value) <- c("Groups","p value","Adj p-values")
-                      # Order the p-values
-                      p_value <- p_value[order(p_value[,3]),]
-                      # Choose the first 10 most significant p-values
-                      if (nrow(p_value) > 10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
-                      
-                    } else {
-                      
-                      #-------------- Rows pairwise comparisons -------------#
-                      # Find all the available pairwise combinations
-                      combs <- combs(rownames(chi_matrix),2)
-                      # Save the names of that combinations
-                      group_names_rows <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
-                      
-                      
-                      # P_value -> a vector where the p values will be stored
-                      chi_p_value_rows <- c(); test <- c()
-                      for(chii in 1:nrow(combs)) { 
-                        # Performed the Chi square test
-                        chi_p_value_rows[chii] <-round(chisq.test(as.numeric(chi_matrix[combs[chii,2],]),p=as.numeric(chi_matrix[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
-                      
-                      # Replace 0.01 with 0
-                      chi_matrix[chi_matrix == 0.01] <- 0
-                      
-                      # Forming the data frame containing the p values
-                      p_value <- data.frame(group_names_rows)
-                      # Naming the rows of the p_value data frame
-                      p_value[,2] <- chi_p_value_rows
-                      # Naming the columns of p_value data frame
-                      colnames(p_value) <- c("Groups","p value")
-                      
-                      # Convert p-values column into numeric
-                      p_value[,2] <- as.numeric(p_value[,2])
-                      # Performing fdr correction
-                      p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)  
-                      # Add the adjusted p-values in the pvalues matrix
-                      p_value[,3] <- p.adjust
-                      # Naming the columns of p_value data frame
-                      colnames(p_value) <- c("Groups","p value","Adj p-values")
-                      # Order the p-values
-                      p_value <- p_value[order(p_value[,3]),]
-                      # Choose the first 10 most significant p-values
-                      if (nrow(p_value) > 10){p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
-                    }
-                    
-                    # Write counts table at results folder
-                    write_table(paste0("DiBaAn-page ",page, " Counts per Cluster (Table 1).tab"),chi_matrix,"table")
-                    # Write Expected-observed p-values at results folder
-                    write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
-                    # Write pairwise p-values at results folder
-                    write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
-                    
-                    if (sum(nchar(colnames(chi_matrix))) < 80) {
-                      
-                      # Tile of the page
-                      text1 <- paste(exploratory_columns[k],"-",Test_name[i])
-                      
-                      # Create a text grob for the title
-                      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-                      
-                      # Tile of the p-value tables
-                      text2 <- "P-values of the Chi-square test (Goodness of Fit)"
-                      
-                      # Create a text grob for the title
-                      tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
-                      
-                      # Arrange in the grid the above elements
-                      grid.arrange(tgrob,gtableGrob("Counts per Cluster (Table 1)",chi_matrix,setDT="YES",size=12),
-                                   arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
-                                   nrow = 3,heights=c(0.4,1,2))
-                    } else {
-                      text1 <- paste(exploratory_columns[k],"-",Test_name[i])
-                      
-                      # Create a text grob for the title
-                      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-                      
-                      # Tile of the p-value tables
-                      text2 <-  "The tables are too big to be printed!!\nYou can find them in .tab format in the results folder."
-                      
-                      # Create a text grob for the title
-                      tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
-                      
-                      grid.arrange(tgrob,tgrob2,nrow=2)
-                      
-                    }
-                  }
-                  
-                } else {
-                  # Tile of the page
-                  text1 <- paste0("'",exploratory_columns[k],"' Column")
-                  
-                  # Create a text grob for the title
-                  tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
-                  
-                  # Main text of the page
-                  text2 <- paste0("It was not possible to perform the chi-square test for the '",Test_name[i],"'. There are no Factors")
-                  
-                  # Create a text grob for the text
-                  tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
-                  
-                  
-                  # Arrange in the grid the above elements
-                  grid.arrange(tgrob,tgrob2 ,nrow=2)
-                }
-              }
-              
-            } else {
-              
-              
-              # Tile of the page
-              text1 <- paste0("'",exploratory_columns[k],"' Column")
-              
-              # Create a text grob for the title
-              tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
-              
-              # Main text of the page
-              text2 <- paste0("It was not possible to perform the chi-square test for the '",exploratory_columns[k],"'. The variable must be categorical ")
-              
-              # Create a text grob for the text
-              tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
-              
-              
-              # Arrange in the grid the above elements
-              grid.arrange(tgrob,tgrob2 ,nrow=2)
-            }
+        # Print the CH indices for the test groups
+        if (index == 0 & test_clusters_in == "Automated") {
+          pdf("Calinski-Harabasz for the test groups.pdf")
+          for (j in 1:length(test_clusters)) {
+            plot(2:9,test_ch[[j]], type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
+            lines(x=(test_clusters[j]),y=test_ch[[j]][test_clusters[j]-1],type="h",col="red")
           }
+          dev.off()
         }
         
-        ############ Page (Percentages of each cluster) ##########
-        
-        # Index indicating the page of the report
-        page <- page+1
-        
-        # Tile of the page
-        text1 <- "Percentages of each cluster"
-        
-        # Create a text grob for the title
-        tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-        
-        # Arrange in the grid the above elements
-        grid.arrange(tgrob,percentage_table, barplot, ncol = 1, nrow = 3,heights=c(0.4,1.2,1.5))
-        
-        # Print the Barplot in png format
-        png_plot(paste("DiBaAn-page",page, "Barplot.png"),barplot)
+        # Print the MDS plot where all the test samples are represented as individual points
+        pdf("DiBaAn-page 5 MDS Plot.pdf")
+        layout(matrix(c(1, 1, 1,
+                        2, 2, 2,
+                        3, 3, 3), nrow=3, byrow=TRUE),heights=c(0.3,3,0.3))
+        par(mar = c(0.1, 0.1, 0.1, 0.1))
+        plot.new()
+        sclass(unifract_dist,as.factor(mapping_cluster[which(input_table[,1] %in% reference_name)]),as.factor(mapping_cluster[which(input_table[,1] %in% levels)]),
+               colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2] )
+        par(mar = c(0.1, 0.1, 0.1, 0.1))
+        plot.new()
+        dev.off()
         
         
+        # Return to results path
+        setwd(outputs_path)
       }
       
       
-      ############ Page (MDS reference clusters and the distances-based clusters) ########
       
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Set the layout of the cover page (3 rows, 1 column)
-      layout(matrix(c(1, 1, 1,
-                      2, 2, 2,
-                      3, 3, 3), nrow=3, byrow=TRUE),heights=c(0.3,3,1) )
-      
-      # Set narrow margings for the last plot
-      par(mar = c(0.1, 0.1, 3.5, 0.1))
-      # Create an empty plot
-      plot.new()
-      # Title for the empty plot
-      title(main="MDS Plot",cex.main = 1.7)
-      
-      # MDS plot presenting the reference clusters and the distances-based clusters of the test groups
-      sclass(unifract_dist,factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),NULL,colour_matrix[colour_matrix[,1]%in%factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),2])
-      
-      # Create an empty plot
-      plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      # Description of the MDS plot
-      text(x=0.5, y = 0.8, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") clustered into ",test_clusters, " Groups\n", "and the test samples (" ,paste(Test_name,collapse="-"), ")\n",
-                                  "clustered into groups based on their distances from the closest reference ",central_point,"." ), cex = 1.5, col = "black")
-      
-      # Default margins
-      par(mar= c(5.1, 4.1, 4.1, 2.1))
-      
-      # Print the MDS plot in png format
-      png_plot(paste("DiBaAn-page",page, "MDS Plot.png"),sclass(unifract_dist,factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),NULL,colour_matrix[colour_matrix[,1]%in%factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),2])
-      )
-      
-      ######### Page (boxplots BD clustering) ########
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Description of list_box
-      text <- paste0("The test samples have been clustered based on their distances from the\n", "closest reference ",central_point,".\n",
-                     "The ",plot_type, " present the distribution of distances of each of these samples from \n",
-                     "their nearest reference cluster\n",
-                     "The p-values for every reference cluster and its nearest test clusters are displayed.\n",
-                     "On the next pages each reference cluster will be examined seperatly.")
-      
-      # Create a text grob for the description of the list_box
-      tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
-      
-      # Choose the selected type of plot
-      if (plot_type == "Boxplots") {plot <-list_box } else if (plot_type == "Point plots") {plot <-list_point } else {plot <-list_violin}
-      
-      # Arrange in the grid the above elements
-      grid.arrange(arrangeGrob( plot,pvaltable,nrow = 1,ncol=2,widths = c(1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
-      
-      # Print the plot in png format
-      png_plot(paste0("DiBaAn-page ",page," ",plot_type,".png"),plot)
-      
-      
-      ############# Pages (individual cluster analysis) ############
-      
-      # Create the boxplots of every reference cluster
-      for (cluster in 1:reference_clusters){
-        # Subset the samples 
-        report_plot <- plot_df_a[dist_plot_1[,3] == cluster,]
-        # Name the rows
-        rownames(report_plot) <- rownames(dist_plot_1[dist_plot_1[,3] == cluster,])
-        # Convert label column into factor
-        report_plot$label <- factor(report_plot$label,levels = unique(report_plot$label))
-        
-        # Store the colours that will be used in the plot
-        color <- colour_matrix[levels(factor(report_plot[,1],levels = unique(report_plot[,1]))),2]
-        
-        # Save the boxplot object in the list
-        my_name <- "Closest Reference Cluster"
-        boxplot_list[[cluster]] <- list()
-        boxplot_list[[cluster]] <- my_boxplot(my_name,report_plot,label,abundance,color)
-        
-        pointplot_list[[cluster]] <- list()
-        pointplot_list[[cluster]] <- my_point_boxplot(my_name,report_plot,label,abundance,color)
-        
-        violinplot_list[[cluster]] <- list()
-        violinplot_list[[cluster]] <- my_violinplot(my_name,report_plot,label,abundance,color)
-        
-      }
-      
-      for (cluster in 1:reference_clusters) {
-        
-        # Index indicating the page of the report
-        page <- page+1
+      if (any(Test_name != "None")) {
         
         
-        if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])) == 1) {pvaluesb <- data.frame("NA")
-        colnames(pvaluesb) <- "pvalues"
+        ########################################################################################
+        #################################      REPORTS         #################################
+        ########################################################################################
+        
+        
+        
+        
+        #################################################
+        ########## Distances-based report ###############
+        #################################################
+        
+        
+        # Initialize the list that  will later contain the plots
+        boxplot_list <- list()
+        pointplot_list <- list()
+        violinplot_list <- list()
+        
+        if (index == 0 & any(Test_name != "None")) {
+          # Open a PDF file to store the outputs
+          pdf("1.Distances-based report.pdf")
         } else {
-          # Available combination for the pairwise comparisons
-          combinations <- combs(levels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])), 2)
-          
-          # Vector containing the p-values
-          pvaluesb <- c()
-          
-          # Calculate the PERMANOVA p-values
-          for (g in 1:nrow(combinations)){ 
-            # Choose the groups for the pairwise comparisons
-            groups <- rownames(plot_matrix[plot_matrix[,ncol(plot_matrix)] %in% combinations[g,],])
-            # Calculate pairwise PERMANOVA p-values
-            adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),ncol(plot_matrix)])[[1]][6][[1]][1]
-            # Form the matrix with the p-values
-            pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
-          }
-          
-          # Performing fdr correction
-          p.adjustb <- round(p.adjust(pvaluesb[,2], method = "BH"),4)
-          
-          # Add the adjusted p-values in the pvalues matrix
-          pvaluesb <- data.frame(pvaluesb,p.adjustb)
-          
-          # Name the columns
-          colnames(pvaluesb) <- c("Groups","p-value","Adj. p-value")
+          # Open a PDF file to store the outputs
+          pdf("Distances-based report.pdf") 
         }
         
-        if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])) != 1){
-          # Convert p-values column into numeric
-          pvaluesb[,2] <- as.numeric(pvaluesb[,2])
-          # Order the p-values
-          pvaluesb <- pvaluesb[order(pvaluesb[,2]),]
-          # Choose the first 10 most significant p-values
-          if (nrow(pvaluesb)>10){ pvaluesb2 <- pvaluesb[1:10,] } else { pvaluesb2 <- pvaluesb }
-        } else {
-          pvaluesb2 <- pvaluesb
-          }
         
-        # Create a gtable containing text grobs 
-        pvaluetable <- gtableGrob("PERMANOVA test - pairwise",pvaluesb2,setDT="NO",size=9)
         
+        ######### Cover page #############
+        
+        # Index indicating the page of the report
+        page <- 1
+        
+        # Set the layout of the cover page
+        layout( matrix(c(1,1), ncol=1))
+        # Default margins
+        par(mar= c(5.1, 4.1, 8, 2.1))
+        
+        # Create an empty plot 
+        plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+        # Title of the plot
+        title(main=paste0("Distances Based Analysis\n","(DiBaAn-",central_point,")"),cex.main = 1.75,font.main = 2)
+        # Description of this PDF
+        text(x = 0.5, y = 0.5, paste0("This report includes the results derived from the analysis of the distances\n",
+                                      "of the test samples from their closest reference ", central_point,".\n",
+                                      "The Reference samples were clustered into ",reference_clusters, " distinct groups* based on\n",
+                                      "the results of the PAM algorithm. The remaining samples of the test \n groups ",
+                                      "were compared with the ",central_point,"s of the reference clusters\n",
+                                      "\n","All the elements of this report (plots and tables) will be found in the \n results folder with the prefix DiBaAn-\n\n\n\n\n\n",
+                                      "* If the program automatically calculated the optimal number of clusters,\n the plots of the Calinski-Harabasz index\n will be fount in the plots folder."),cex = 1.1, col = "black",font = 3)
         
         # Default margins
         par(mar= c(5.1, 4.1, 4.1, 2.1))
         
         
-        if (length(which(plot_matrix$Nearest.reference.cluster == cluster)) > 2){
-          if (length(Test_name) <= 2){
-            # Set the layout of the cover page (3 rows, 1 column)
-            layout(matrix(c(1, 1, 1,
-                            2, 2, 2,
-                            3, 3, 3), nrow=3, byrow=TRUE),heights=c(1,3,0.3) )
-          } else {
-            # Set the layout of the cover page (3 rows, 1 column)
-            layout(matrix(c(1, 1, 1,
-                            2, 2, 2,
-                            3, 3, 3), nrow=3, byrow=TRUE),heights=c(1.5,3,0.3) )
-          }  
-          
-          
-          # Create an empty plot
-          plot.new()
-          # Title of the page
-          title(main=paste("Reference Cluster",cluster),cex.main = 1.7,font.main = 2)
-          
-          
-          # Text that will we used as description for every reference cluster
-          text <- c()
-          
-          if (length(Test_name)<5){
-            
-            for (group in 1:length((Test_name))) { 
-              # Subset the samples of each test group
-              temporary <- plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]
-              # Write how many samples of each test group is closer to every reference cluster
-              paste2 <- paste(nrow(temporary[temporary$Nearest.reference.cluster == cluster,]),"of the", nrow(plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]),
-                              "samples of the", levels[group], " group are closer to the reference cluster",cluster,"\n")
-              # Final text
-              text <- paste(text,paste2)
-            }
-          } else {
-            text <- paste("The next MDS plot presents the closest samples of each group to the reference cluster",cluster)
-          }
-          
-          # Information about the number of the test samples that are closer to each reference cluster
-          text(x=0.5, y = 0.25, text,  cex = 1.3, col = "black",font=3)
-          
-          
-          # MDS plot with the reference cluster and the test sample that are closer to it
-          sclass(unifract_dist[plot_matrix$Nearest.reference.cluster == cluster,plot_matrix$Nearest.reference.cluster == cluster],factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])),
-                 NULL, colour_matrix[levels(factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)]))),2])
-          
-          # Change the margins in order to be created blank space at the end of the page
-          par(mar = c(0.1, 0.1, 0.1, 0.1))
-          
-          # Create an empty plot
-          plot.new()
-          
-          
-          # Print the MDS plot in png format
-          png_plot(paste0("DiBaAn-page ",page, " MDS plot.png"),sclass(unifract_dist[plot_matrix$Nearest.reference.cluster==cluster,plot_matrix$Nearest.reference.cluster==cluster],factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])),
-                                                                       NULL, colour_matrix[levels(factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)]))),2]))
-          
-          
-          # Default margins
-          par(mar= c(5.1, 4.1, 4.1, 2.1))
-          
-          
-          # Index indicating the page of the report
-          page <- page+1
-          
-          
-          # tree with the samples of the reference cluster and the test samples that are closer to it
-          tree_plot <- tree(unifract_dist[plot_matrix$Nearest.reference.cluster == cluster,plot_matrix$Nearest.reference.cluster==cluster],factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])),
-                            colour_matrix[levels(factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)]))),2])
-          
-          # Title of the plot
-          text3 <- paste("Phylogram")
-          # Create a text grob for the title
-          tgrob3 <- text_grob(text3, face = "bold", color = "Black")
-          
-          # Choose the selected type of plot
-          if (plot_type == "Boxplots") {plot <-boxplot_list[[cluster]] } else if (plot_type == "Point plots") {plot <- pointplot_list[[cluster]] } else {plot <-violinplot_list[[cluster]]}
-          
-          
-          # Grid arrange all the above elements
-          grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.55,0.1,1))
-          
-          # Write the PERMANOVA p-values
-          write_table(paste0("DiBaAn-page ",page," PERMANOVA pvalues.tab"),pvaluesb,"pvalues")
-          
-          # Print the Phylogram  in png format
-          png_plot(paste0("DiBaAn-page ",page," Phylogram.png"),tree_plot)
-          
-          # Print the plot in png format
-          png_plot(paste0("DiBaAn-page ",page," ",plot_type,".png"),plot)
-          
-        } 
-      }
-      
-      
-      dev.off()
-      
-    }
-    
-    
-    
-    #################################################
-    ########## De novo-based report #################
-    #################################################
-    
-    if (index == 0 & any(Test_name != "None")) {
-      
-      # Create the lists where the plots will be saved
-      boxplot_list <- list()
-      pointplot_list <- list()
-      violinplot_list <- list()
-      
-      
-      # Open the PDF
-      pdf("2.De novo clustering report.pdf")
-      
-      
-      
-      ########### Cover Page ##########
-      
-      # Index indicating the page of the report
-      page <- 1
-      
-      
-      # Set the layout of the cover page
-      layout( matrix(c(1,1), ncol=1) )
-      # Default margins
-      par(mar= c(5.1, 4.1, 8, 2.1))
-      
-      # Create an empty plot
-      plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      # Title of the plot
-      title(main=paste0("De novo clustering Analysis\n","(DeNoAn-",central_point,")"),cex.main = 1.8,font.main = 2)
-      # Description of this PDF
-      text(x = 0.5, y = 0.5, paste("This report includes results derived from the analysis that is based \n",
-                                   "on the de novo clustering of both the reference and test samples\n",
-                                   "Both the Reference and test samples were clustered into distinct\n groups ",
-                                   "based on the results of the PAM algorithm.\n\n\n",
-                                   "* All the elements of this report (plots and tables) will be found in the \n results folder with the prefix DeNoAn-"),cex = 1.1, col = "black",font = 3)
-      # Default margins
-      par(mar= c(5.1, 4.1, 4.1, 2.1))
-      
-      
-      ############## Page 2 ##########
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Information about the refernce clusters
-      clustering_text <- paste0("The reference dataset (",paste(reference_name,collapse="+"),") was clustered into ", reference_clusters ," groups:\n")
-      # Vector where the propabilities will be placed
-      propability <- c()
-      # Vector where the number of samples will be placed
-      number_samples <- c()
-      
-      for (i in 1:reference_clusters){
-        clustering_text <- paste(clustering_text,paste(reference_name,collapse="+") ,i, "has", length(which(denovo_clusters==paste(paste(reference_name,collapse="+"),i))),"samples.\n")
-        if (reference_clusters > 1) {
-          number_samples <- c(number_samples,length(which(denovo_clusters==paste(paste(reference_name,collapse="+"),i))))
-          propability <- c(propability,1/reference_clusters)
-        }
-      }
-      
-      if (reference_clusters > 1) {
         
-        # Calculate the Chi-square p-values
-        clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*\n")
-      }
-      
-      # Information about the de novo clustering of test groups
-      for (i in 1:length(levels)) {
-        clustering_text <- paste(clustering_text,"\n", "The",levels[i] ,"group was clustered into",test_clusters[i],"groups:\n" )
-        # Vector where the probabilities will be placed
-        propability <- c()
-        # Vector where the number of samples will be placed
-        number_samples <- c()
-        
-        for (j in 1:test_clusters[i]) {
-          clustering_text <- paste(clustering_text,levels[i],j,"has", length(which(denovo_clusters==paste(levels[i],j))),"samples.\n")
-          if (test_clusters[i] > 1) {
-            number_samples <- c(number_samples,length(which(denovo_clusters==paste(levels[i],j))))
-            propability <- c(propability,1/test_clusters[i])
-          }
-        }
-        
-        if (test_clusters[i] > 1) {
-          
-          # Calculate the Chi-square p-values
-          clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*\n")
-        }
-      }
-      
-      if (length(Test_name) <= 2){
-        # Create a text grob for the clustering
-        tgrob <- text_grob(clustering_text, face = "italic", color = "Black",size=13)
-      } else {
-        # Create a text grob for the clustering
-        tgrob <- text_grob(clustering_text, face = "italic", color = "Black",size=9)
-      }
-      
-      # Create a text grob for the ttle of the page
-      tgrob2 <- text_grob("De novo clustering of the reference and \n test groups",face = "bold.italic", color = "Black",size=15)
-      
-      text <-  "* The Chi square (Goodness of fit) test checks if there is discrepancy between the observed number of observations \n of each cluster and the number of observation in case the samples were distributed uniformly."
-      
-      # Create a text grob for the clustering
-      tgrob3 <- text_grob(text, face = "italic", color = "Black",size=9)
-      
-      # Arrange in the grid the above elements
-      grid.arrange(tgrob2,tgrob,tgrob3,nrow=3,heights=c(0.5,3,0.5))
-      
-      
-      ############ Page 3 #############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      
-      # Set the layout of the cover page (3 rows, 1 column)
-      layout(matrix(c(1, 1, 1,
-                      2, 2, 2,
-                      3, 3, 3), nrow=3, byrow=TRUE),heights=c(1,3,0.3) )
-      
-      # Create an empty plot
-      plot.new()
-      # Title of the 3rd page
-      title(main="MDS Plot",cex.main = 1.8,font.main = 2)
-      
-      # Description of the MDS plot
-      text(x=0.5, y = 0.30, paste0("MDS plot presenting the groups which have formed from the de novo clustering of  \n the ", 
-                                   "reference (", paste(reference_name,collapse="+"), ") and the test samples (", paste(Test_name,collapse="+"), ") \n"), cex = 1.5, col = "black")
-      
-      # MDS plot presenting the clusters of the de novo clustering of both the reference and test groups
-      sclass(unifract_dist,factor(denovo_clusters,levels=unique(denovo_clusters)),
-             NULL,colour_matrix[levels(factor(denovo_clusters,levels=unique(denovo_clusters))),2])
-      
-      
-      # Change the margins in order to be created blank space at the end of the page
-      par(mar = c(0.1, 0.1, 0.1, 0.1))
-      # Create an empty plot
-      plot.new()
-      
-      # Default margins
-      par(mar= c(5.1, 4.1, 4.1, 2.1))
-      
-      # Print the MDS plot in png format
-      png_plot(paste0("DeNoAn-page ",page, " MDS Plot.png"),sclass(unifract_dist,factor(denovo_clusters,levels=unique(denovo_clusters)),
-                                                                   NULL,colour_matrix[levels(factor(denovo_clusters,levels=unique(denovo_clusters))),2]))
-      
-      
-      
-      ############### Page 4 ##########
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Title of the 4th page 
-      text1 <- "Descriptive Statistics"
-      
-      # Create a text grob for the title
-      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-      
-      
-      # Arrange in the grid the above elements
-      grid.arrange(tgrob,reference_statistis_table,statistic_table_test_clusters,nrow=3,heights=c(0.4,1.3,1.6))
-      
-      
-      
-      ############### Page 5-(undefined) ##########
-      
-      if (chi_square == 1){
+        ########## Page 2 ############
         
         # Index indicating the page of the report
         page <- page+1
         
-        # Tile of the chi-square analysis
-        text1 <- "Chi-square test \nGoodness of Fit analysis"
+        # Set the layout of the cover page (3 rows, 1 column)
+        layout(matrix(c(1, 1, 1,
+                        2, 2, 2,
+                        3, 3, 3), nrow=3, byrow=TRUE),heights=c(1,3,0.3))
         
+        # Create an empty plot
+        plot.new()
+        # Title of the plot
+        title(main="MDS Plot",cex.main = 1.7,font.main = 2)
+        # Text of the plot
+        text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n",
+                                     "and the test samples (", paste(Test_name,collapse="-"), ") " ),cex = 1.5, col = "black")
+        
+        # MDS plot where the refernce groups has been clustered and all the test samples are represented as individual points
+        sclass(unifract_dist,factor(input_table[,1],levels=unique(input_table[,1])),NULL,colour_matrix[levels(factor(input_table[,1],levels=unique(input_table[,1]))),2] )
+        
+        # Set narrow margings for the last plot
+        par(mar = c(0.1, 0.1, 0.1, 0.1))
+        # Create an empty plot
+        plot.new()
+        
+        # Default margins
+        par(mar= c(5.1, 4.1, 4.1, 2.1))
+        
+        # Print the MDS plot in png format
+        png_plot(paste("DiBaAn-page",page,"MDS plot.png"),
+                 sclass(unifract_dist,factor(input_table[,1],levels=unique(input_table[,1])),NULL,colour_matrix[levels(factor(input_table[,1],levels=unique(input_table[,1]))),2] ))
+        
+        
+        
+        ########## Page 3 ###########
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Title of the 3rd page
+        text <- "Phylogram"
         # Create a text grob for the title
-        tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+        tgrob1 <- text_grob(text, face = "bold.italic", color = "Black",size=16)
         
-        # Text of the footnote
-        text2 <- paste("*For the next",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)),"pages")
+        # Description of the Phylogram
+        text2 <- paste0("Phylogram of the reference (",paste(reference_name,collapse="+"),") and test (", paste(Test_name,collapse="-"), ")\n" , "samples")
+        # Create a text grob for the Description
+        tgrob2 <- text_grob(text2, face = "italic", color = "Black",size=12)
         
-        # Create a text grob for the footnote
-        tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+        # Tree of the reference end test groups
+        tree_plot <- tree(unifract_dist,factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column])),
+                          colour_matrix[levels(factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column]))),2] )
+        
         
         # Arrange in the grid the above elements
-        grid.arrange(tgrob,tgrob2, nrow=2,heights=c(2,0.5))
+        grid.arrange(tgrob1,tgrob2,tree_plot,nrow = 3,heights=c(0.5,0.5,2.5))
+        
+        # Print the Phylogram in png format
+        png_plot(paste("DiBaAn-page",page,"Phylogram.png"),tree_plot)
         
         
-        #------------------------------------------- Chi-Square Analysis ---------------------------------------#
+        ############ Page 4 ##############
         
-        for (k in 1:length(exploratory_columns)){
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Description of the list_box2[[1]]
+        text <- paste0(plot_type," displaying the distribution of the distances around their own self-",central_point,".\n",
+                       "This plot can provide additional information about the compactness of the groups.")
+        # Create a text grob for the Description of the list_box2[[1]]
+        tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
+        
+        
+        # Choose the selected type of plot
+        if (plot_type == "Boxplots") {plot <-list_box2[[1]] } else if (plot_type == "Point plots") {plot <-list_point2[[1]] } else {plot <-list_violin2[[1]]}
+        
+        # Arrange in the grid the above elements
+        grid.arrange(arrangeGrob( plot,pvaltable2[[1]],nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
+        
+        # Print the plot in png format
+        png_plot(paste("DiBaAn-page",page,plot_type,".png"),plot)
+        
+        
+        
+        ########## Page 5 ############
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Set the layout of the cover page (3 rows, 1 column)
+        layout(matrix(c(1, 1, 1,
+                        2, 2, 2,
+                        3, 3, 3), nrow=3, byrow=TRUE),heights=c(1.2,2.9,0.3))
+        
+        # Create an empty plot
+        plot.new()
+        # Title of the plot
+        title(main="MDS Plot",cex.main = 1.7,font.main = 2)
+        # Text of the plot
+        text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n"," clustered into ", test_clusters ," Groups\n",
+                                     "and the test samples (", paste(Test_name,collapse="-"), ") as individual points" ),cex = 1.5, col = "black")
+        
+        # MDS plot where the refernce groups has been clustered and all the test samples are represented as individual points
+        sclass(unifract_dist,as.factor(mapping_cluster[which(input_table[,1] %in% reference_name)]),as.factor(mapping_cluster[which(input_table[,1] %in% levels)]),
+               colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2] )
+        
+        # Set narrow margings for the last plot
+        par(mar = c(0.1, 0.1, 0.1, 0.1))
+        # Create an empty plot
+        plot.new()
+        
+        # Default margins
+        par(mar= c(5.1, 4.1, 4.1, 2.1))
+        
+        
+        ########## Page 6 ############
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Description of the list_box2[[2]]
+        text <- paste0(plot_type," displaying the distribution of the distances around the closest referenece ",central_point,".\n",
+                       "For each sample of the test groups (",paste(Test_name,collapse="-"), ") the nearest reference ",central_point," \nwas found ", "and then these distances were calculated.")
+        
+        # Create a text grob for the Description of the list_box2[[2]]
+        tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
+        
+        # Choose the selected type of plot
+        if (plot_type == "Boxplots") {plot <-list_box2[[2]] } else if (plot_type == "Point plots") {plot <-list_point2[[2]] } else {plot <-list_violin2[[2]]}
+        
+        
+        # Arrange in the grid the above elements
+        grid.arrange(arrangeGrob( plot,pvaltable2[[2]],nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
+        
+        # Print the plot in png format
+        png_plot(paste("DiBaAn-page",page,plot_type,".png"),plot)
+        
+        
+        
+        ############ Page 7 ##########
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Title of the 7th page 
+        text1 <- "Distances from the closest reference cluster"
+        # Create a text grob for the title
+        tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+        
+        # Description of the matrix of the median distances
+        text2 <- paste("For each group the median distance of the sample from \n every reference",central_point, "was calculated. \n Then, the closest reference cluster was found.\n")
+        # Create a text grob for the median matrix
+        tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=13)
+        
+        
+        # Arrange in the grid the above elements
+        grid.arrange(tgrob,median_table,tgrob2,nrow=3,heights=c(0.4,1,1.5))
+        
+        
+        if (reference_clusters > 1) {
           
-          # Index indicating the page of the report
-          page <- page+1
+          ############ Page 8-undefined ##########
           
-          # Check if the column is character of factor
-          if (is.character(meta_file[,exploratory_columns[k]]) == TRUE | is.factor(meta_file[,exploratory_columns[k]]) == TRUE ){
+          if (chi_square == 1){
             
-
+            # Index indicating the page of the report
+            page <- page+1
+            
             # Tile of the page
-            text1 <- paste0("'",exploratory_columns[k],"' Column")
+            text1 <- paste("Statistical Analysis* of the \n", paste(exploratory_columns,collapse=","),"columns.")
             
             # Create a text grob for the title
             tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
             
-            # Main text of the page
-            text2 <- paste0("The distribution of the samples across the clusters of the test group(s)\n is presented in Table 1.\n
-                 Table 2 presents the p-values of the Chi-square test of the observed distribution \nof the counts across the clusters in comparison with the expected \ndistribution if the counts were uniformly distributed.\n
-                 Table 3 contains the p-values of the pairwise comparisons.\n
-                 The tables contain only the 10 most significant p-values. The rest of the p-values\nhave been printed in the results folder."
-            )
-            
-            # Create a text grob for the text
-            tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+            #Add text to the page
+            text2 <- paste("*Chi square test-Goodness of fit will be applied to the categorical variables.\n",
+                           "Wilcoxon Rank Sum test will be applied to the numerical variables.")
             
             # Create a text grob for the footnote
-            text3 <- "*If the number of counts is limited or zero counts occurs, then the Chi-square approximation \n may be incorrect."  
+            tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=14)
             
-            # Create a text grob for the footnote
-            tgrob3 <- text_grob(text3,face = "italic", color = "Black",size=11)
             
             # Arrange in the grid the above elements
-            grid.arrange(tgrob,tgrob2,tgrob3 ,nrow=3)
+            grid.arrange(tgrob,tgrob2, nrow=3,heights=c(2,1,0.5))
             
-            # Calculate the chi-square p-values for every test group
-            for (i in 1:length(Test_name)){
+          }
+          
+          # Index indicating the page of the report
+          page <- page+1
+          
+          # Tile of the 8th page
+          text1 <- paste("Distances from the closest reference",central_point)
+          
+          # Create a text grob for the title
+          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+          
+          # Description of the two tables
+          text2 <- paste(" De novo clustering has been applied to the reference dataset.\n Following, the test samples have been clustered based on the distances \n from the closest reference", central_point, "(matrix on the left).
+                   \n The matrix on the right presents the p-values of the Chi square test for every \n pair of groups." )
+          
+          # Create a text grob for the description
+          tgrob2 <- text_grob(text2, face = "italic", color = "Black",size=12)
+          
+          # Arrange in the grid the above elements
+          grid.arrange(tgrob,arrangeGrob(DB_matrix_table,chisquare_pvalues,nrow=1),tgrob2,nrow=3,heights=c(0.4,1,1))
+          
+          
+          if (chi_square == 1){
+            
+            #-------Perform Statistical analysis for the categorical variables------------#
+            
+            for (k in 1:length(exploratory_columns)){
               
-              if (test_clusters[i] > 1) {
               
-              # Index indicating the page of the report
-              page <- page+1
+              # If a column has less than 3 unique elements will be converted in factor
+              if (is.numeric(meta_file[,exploratory_columns[k]])==TRUE & length(unique(meta_file[,exploratory_columns[k]])) < 4) {
+                meta_file[,exploratory_columns[k]] <- as.factor(meta_file[,exploratory_columns[k]])
+              }
               
-              # Subset only the names of the test Samples 
-              test_names <- rownames(input_table[input_table[,1]==Test_name[i],])
-              # Extract the factors of the column
-              factors <- factor(meta_file[test_names,exploratory_columns[k]],levels=unique(meta_file[test_names,exploratory_columns[k]]))
-              
-              if (nlevels(factors) > 0){
-                # Form the matrix where the counts of the observations will be placed
-                chi_matrix <- data.frame(matrix(ncol = (nlevels(factors)) , nrow = test_clusters[i]))
-                # Naming the rows of p_value data frame
-                rownames(chi_matrix) <- paste(Test_name[i],1:test_clusters[i])
-                # Naming the columns of p_value data frame
-                colnames(chi_matrix) <- levels(factors)
+              # Check if the column is character of factor
+              if (is.character(meta_file[,exploratory_columns[k]])==TRUE |is.factor(meta_file[,exploratory_columns[k]])==TRUE ){
                 
+                # Index indicating the page of the report
+                page <- page+1
                 
-                for (ii in 1:test_clusters[i]){
-                  # Subset only the names of the test Samples for every cluster
-                  names2 <- rownames(mapping_file[mapping_file[,1]==paste(Test_name[i],ii),])
-                  for (iii in 1:nlevels(factors)){
-                    # Place the counts in the Chi_matrix
-                    chi_matrix[ii,iii] <- length(which(meta_file[names2,exploratory_columns[k]] == levels(factors)[iii]))
-                  }
-                }
-                
-                # Replace zero counts with 0.01
-                chi_matrix[chi_matrix==0] <- 0.01
-                
-                
-                # Performing Chi-square test(Goodness of fit) for each column
-                exp_col <- apply(chi_matrix,2,function(x) chisq.test(x)$p.value)
-                
-                if (ncol(chi_matrix) > 1){
-                  # Performing Chi-square test(Goodness of fit) for each row
-                  exp <-apply(chi_matrix,2,sum)/test_clusters[i] 
-                  exp_r <- apply(chi_matrix,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value)
-                  
-                  
-                  # Performing fdr correction
-                  adjustb <- round(p.adjust(c(exp_col,exp_r), method = "BH"),4)
-                  # Add the adjusted p-values in the expected matrix
-                  expected <- data.frame(cbind(c(exp_col,exp_r),adjustb))
-                  # Naming the columns of p_value data frame
-                  colnames(expected) <- c( "P-values","Adj p-values")
-                  # Naming the rows of p_value data frame
-                  rownames(expected) <- c(names(exp_col),names(exp_r))
-                } else {
-                  # Performing fdr correction
-                  adjustb <- round(p.adjust(exp_col, method = "BH"),4)
-                  # Add the adjusted p-values in the expected matrix
-                  expected <- data.frame(cbind(exp_col,adjustb))
-                  # Naming the columns of p_value data frame
-                  colnames(expected) <- c( "P-values","Adj p-values")
-                  # Naming the rows of p_value data frame
-                  rownames(expected) <- c(names(exp_col))
-                }
-                
-                
-                # Order the p-values
-                expected <- expected[order(expected[,2]),]
-                # Choose the first 10 most significant p-values
-                if (nrow(expected) > 10){expected2 <- expected[1:10,]} else { expected2 <- expected }
-                
-                if (ncol(chi_matrix) > 1) {
-                  # Find all the available pairwise combinations
-                  combs <- combs(levels(factors), 2)
-                  # Save the names of that combinations
-                  group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
-                  
-                  
-                  # chi_p_value -> a vector where the p values will be stored
-                  chi_p_value <- c(); test <- c()
-                  for (chi in 1:nrow(combs)) { 
-                    # Performed the Chi square test
-                    chi_p_value[chi] <- round(chisq.test(chi_matrix[,combs[chi,2]],p=chi_matrix[,combs[chi,1]],rescale.p = TRUE)$p.value,4)
-                  }
-                  
-                  
-                  #--- Rows pairwise comparisons ----#  
-                  # Find all the available pairwise combinations
-                  combs <- combs(rownames(chi_matrix), 2)
-                  # Save the names of that combinations
-                  group_names_rows <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
-                  
-                  
-                  # chi_p_value -> a vector where the p values will be stored
-                  chi_p_value_rows <- c(); test <- c()
-                  for (chi in 1:nrow(combs)) { 
-                    # Performed the Chi square test
-                    chi_p_value_rows[chi] <- round(chisq.test(as.numeric(chi_matrix[combs[chi,2],]),p=as.numeric(chi_matrix[combs[chi,1],]),rescale.p = TRUE)$p.value,4)
-                  }
-                  
-                  
-                  # Replace 0.01 with 0
-                  chi_matrix[chi_matrix == 0.01] <- 0
-                  
-                  # Forming the data frame containing the p values
-                  p_value <- data.frame(group_names)
-                  # Place the p-values
-                  p_value[,2] <- chi_p_value
-                  # Naming the columns of p_value data frame
-                  colnames(p_value) <- c("Groups","p value")
-                  
-                  # Forming the data frame containing the p values
-                  p_value_rows <- data.frame(group_names_rows)
-                  # Naming the rows of the p_value data frame
-                  p_value_rows[,2] <- chi_p_value_rows
-                  # Naming the columns of p_value data frame
-                  colnames(p_value_rows) <- c("Groups","p value")
-                  
-                  # rbind all the p-values
-                  p_value <- rbind(p_value,p_value_rows)
-                  
-                  # Convert p-values column into numeric
-                  p_value[,2] <- as.numeric(p_value[,2])
-                  # Performing fdr correction
-                  p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)
-                  # Add the adjusted p-values in the pvalues matrix
-                  p_value[,3] <- p.adjust
-                  # Naming the columns of p_value data frame
-                  colnames(p_value) <- c("Groups","p value","Adj p-values")
-                  # Order the p-values
-                  p_value <- p_value[order(p_value[,3]),]
-                  # Choose the first 10 most significant p-values
-                  if (nrow(p_value) > 10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
-                  
-                } else {
-                  
-                  #--- Rows pairwise comparisons ----#  
-                  # Find all the available pairwise combinations
-                  combs <- combs(rownames(chi_matrix), 2)
-                  # Save the names of that combinations
-                  group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
-                  
-                  
-                  # chi_p_value -> a vector where the p values will be stored
-                  chi_p_value_rows <- c(); test <- c()
-                  for(chi in 1:nrow(combs)) { 
-                    # Performed the Chi square test
-                    chi_p_value_rows[chi] <- round(chisq.test(as.numeric(chi_matrix[combs[chi,2],]),p=as.numeric(chi_matrix[combs[chi,1],]),rescale.p = TRUE)$p.value,4)
-                  }
-                  
-                  
-                  # Replace 0.01 with 0
-                  chi_matrix[chi_matrix == 0.01] <- 0
-                  
-                  # Forming the data frame containing the p values
-                  p_value <- data.frame(group_names_rows)
-                  # Naming the rows of the p_value data frame
-                  p_value[,2] <- chi_p_value_rows
-                  # Naming the columns of p_value data frame
-                  colnames(p_value) <- c("Groups","p value")
-                  # Convert p-values column into numeric
-                  p_value[,2] <- as.numeric(p_value[,2])
-                  # Performing fdr correction
-                  p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)
-                  # Add the adjusted p-values in the pvalues matrix
-                  p_value[,3] <- p.adjust
-                  # Naming the columns of p_value data frame
-                  colnames(p_value) <- c("Groups","p value","Adj p-values")
-                  # Order the p-values
-                  p_value <- p_value[order(p_value[,3]),]
-                  # Choose the first 10 most significant p-values
-                  if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
-                  
-                }
-                
-                # Print the counts table in the results folder
-                write_table(paste0("DeNoAn-page ",page, " Counts per cluster (Table 1).tab"),chi_matrix,"table")
-                # Print the Expected-observed p-values table in the results folder
-                write_table(paste0("DeNoAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
-                # Print the pairwise p-values table in the results folder
-                write_table(paste0("DeNoAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
-                
-                if (sum(nchar(colnames(chi_matrix))) < 62){
-                  
-                  # Tile of the page
-                  text1 <- paste(exploratory_columns[k],"-",Test_name[i])
-                  
-                  # Create a text grob for the title
-                  tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-                  
-                  # Tile of the p-value tables
-                  text2 <- "P-values of the Chi-square test (Goodness of Fit)"
-                  
-                  # Create a text grob for the title
-                  tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
-                  
-                  # Arrange in the grid the above elements
-                  grid.arrange(tgrob,gtableGrob("Counts per cluster (Table 1)",chi_matrix,setDT="YES",size=12), 
-                               arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1))
-                               , nrow = 3,heights=c(0.4,1,2))
-                } else {
-                  text1 <- paste(exploratory_columns[k],"-",Test_name[i])
-                  
-                  # Create a text grob for the title
-                  tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-                  
-                  # Tile of the p-value tables
-                  text2 <- "The tables are too big to be printed!!\nYou can find them in .tab format in the results folder."
-                  
-                  # Create a text grob for the title
-                  tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
-                  
-                  grid.arrange(tgrob,tgrob2,nrow=2)
-                }
-                
-                
-                
-              } else {
                 # Tile of the page
                 text1 <- paste0("'",exploratory_columns[k],"' Column")
                 
@@ -3949,221 +2867,991 @@ if (ncol(taxonomy)!=0) {
                 tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
                 
                 # Main text of the page
-                text2 <- paste0("It was not possible to perform the chi-square test for the '",Test_name[i],"'. There are no Factors")
+                text <- paste0("The relationship between the reference clusters and the  '",exploratory_columns[k],"' column  \nwill be examined in the following pages.\n\n",
+                               "The distribution of the samples across the reference clusters is presented in Table(s) \nof the first line.\n\n",
+                               "Table 2 presents the p-values of the Chi-square test of the observed distribution \nof the counts against the expected distribution if the counts were \nuniformly distributed.\n\n",
+                               "Table 3 contains the p-values of the pairwise comparisons.\n\n",
+                               "The tables contain only the 10 most significant p-values. The rest of the p-values \nhave been printed in the results folder.")
                 
                 # Create a text grob for the text
-                tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+                tgrob2 <- text_grob(text,face = "italic", color = "Black",size=13)
+                
+                # Create a text grob for the footnote
+                text3 <- "*If the number of counts is limited or zero counts occurs, then the Chi-square approximation \n may be incorrect." 
+                
+                # Create a text grob for the footnote
+                tgrob3 <- text_grob(text3,face = "italic", color = "Black",size=11)
+                
+                # Arrange in the grid the above elements
+                grid.arrange(tgrob,tgrob2,tgrob3 ,nrow=3)
+                
+                
+                
+                # Subset the names of the reference group
+                names_ref <-rownames(input_table[which(input_table[,1] %in% reference_name),])
+                # Subset the names of each test group
+                names_test <- rownames(input_table[input_table[,1] %in% Test_name ,])
+                
+                # Extract the factors of the reference group
+                factor_ref <- factor(meta_file[names_ref,exploratory_columns[k]],levels=unique(meta_file[names_ref,exploratory_columns[k]]))
+                # Extract the factors of each test group
+                factor_test <- factor(meta_file[names_test,exploratory_columns[k]],levels=unique(meta_file[names_test,exploratory_columns[k]]))
+                
+                if (nlevels(factor_ref) > 0 & nlevels(factor_test) == 0){
+                  
+                  # Index indicating the page of the report
+                  page <- page+1
+                  
+                  # Form the matrix where the counts of the observations will be placed
+                  chi_matrix <- data.frame(matrix(ncol = (nlevels(factor_ref)) , nrow = reference_clusters))
+                  # Naming the rows of the chi matrix
+                  rownames(chi_matrix) <- paste(reference_name,1:reference_clusters)
+                  # Naming the columns of the chi matrix
+                  colnames(chi_matrix) <- c(paste(levels(factor(factor_ref,levels=unique(factor_ref))),"(Ref)"))
+                  
+                  for (ii in 1:reference_clusters){
+                    # Subset the names of the reference group
+                    names2 <- rownames(mapping_file[mapping_file[,1] == paste(reference_name,ii),])
+                    for (iii in 1:nlevels(factor_ref)){
+                      # Place the counts of the reference group in the chi matrix
+                      chi_matrix[ii,iii] <- length(which(meta_file[names2,exploratory_columns[k]]==levels(factor_ref)[iii]))
+                    }
+                  }
+                  
+                  
+                  # Replace 0 with 0.01
+                  chi_matrix[chi_matrix == 0] <- 0.01
+                  
+                  # Performing Chi-square test(Goodness of fit) for each column
+                  exp_col <- round(apply(chi_matrix,2,function(x) chisq.test(x)$p.value),4)
+                  
+                  if (ncol(chi_matrix) > 1){
+                    # Performing Chi-square test(Goodness of fit) for each row
+                    exp <-apply(chi_matrix,2,sum)/reference_clusters 
+                    exp_r <- round(apply(chi_matrix,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value),4)
+                    
+                    
+                    # Performing fdr correction
+                    adjustb <- round(p.adjust(c(exp_col,exp_r), method = "BH"),4)
+                    # Add the adjusted p-values in the pvalues matrix
+                    expected <- data.frame(cbind(c(exp_col,exp_r),adjustb))
+                    colnames(expected) <- c( "P-values","Adj p-values")
+                    
+                  } else {
+                    
+                    # Performing fdr correction
+                    adjustb <- round(p.adjust(c(exp_col), method = "BH"),4)
+                    # Add the adjusted p-values in the pvalues matrix
+                    expected <- data.frame(cbind(exp_col,adjustb))
+                    # Naming the rows of p_value data frame
+                    rownames(expected) <- c(names(exp_col))
+                  }
+                  # Naming the columns of expected data frame
+                  colnames(expected) <- c( "P-values","Adj p-values")
+                  
+                  
+                  # Order the p-values
+                  expected <- expected[order(expected[,2]),]
+                  # Choose the first 10 most significant p-values
+                  if (nrow(expected) > 10) {expected2 <- expected[1:10,]} else {expected2 <- expected}
+                  
+                  if(ncol(chi_matrix) > 1){
+                    # Find all the available pairwise combinations
+                    combs <- combs(colnames(chi_matrix),2)
+                    # Save the names of that combinations
+                    group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+                    
+                    
+                    # P_value -> a vector where the p values will be stored
+                    chi_p_value <- c(); test <- c()
+                    for(chii in 1:nrow(combs)) { 
+                      # Performed the Chi square test
+                      chi_p_value[chii] <- round(chisq.test(chi_matrix[,combs[chii,2]],p=chi_matrix[,combs[chii,1]],rescale.p = TRUE)$p.value,4) }
+                    
+                    #---------- Rows pairwise comparisons ----------#
+                    
+                    # Find all the available pairwise combinations
+                    combs <- combs(rownames(chi_matrix),2)
+                    # Save the names of that combinations
+                    group_names_rows <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+                    
+                    
+                    # P_value -> a vector where the p values will be stored
+                    chi_p_value_rows <- c(); test <- c()
+                    for(chii in 1:nrow(combs)) { 
+                      # Performed the Chi square test
+                      chi_p_value_rows[chii] <- round(chisq.test(as.numeric(chi_matrix[combs[chii,2],]),p=as.numeric(chi_matrix[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
+                    
+                    # Replace 0.01 with 0
+                    chi_matrix[chi_matrix == 0.01] <- 0
+                    
+                    
+                    # Forming the data frame containing the p values
+                    p_value <- data.frame(group_names)
+                    # Naming the rows of the p_value data frame
+                    p_value[,2] <- chi_p_value
+                    # Naming the columns of p_value data frame
+                    colnames(p_value) <- c("Groups","p value")
+                    
+                    
+                    # Forming the data frame containing the p values
+                    p_value_rows <- data.frame(group_names_rows)
+                    # Naming the rows of the p_value data frame
+                    p_value_rows[,2] <- chi_p_value_rows
+                    # Naming the columns of p_value data frame
+                    colnames(p_value_rows) <- c("Groups","p value")
+                    
+                    # rbind all the p-values
+                    p_value <- rbind(p_value,p_value_rows)
+                    
+                    
+                    # Convert p-values column into numeric
+                    p_value[,2] <- as.numeric(p_value[,2])
+                    # Performing fdr correction
+                    p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)  
+                    # Add the adjusted p-values in the pvalues matrix
+                    p_value[,3] <- p.adjust
+                    # Naming the columns of p_value data frame
+                    colnames(p_value) <- c("Groups","p value","Adj p-values")
+                    # Order the p-values
+                    p_value <- p_value[order(p_value[,3]),]
+                    # Choose the first 10 most significant p-values
+                    if (nrow(p_value) > 10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
+                    
+                  } else {
+                    
+                    # Replace 0.01 with 0
+                    chi_matrix[chi_matrix == 0.01] <- 0
+                    
+                    # Create the dataframe when there is only one column
+                    p_value <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
+                    colnames(p_value) <- c("","")
+                    rownames(p_value) <- c("")
+                    p_value2 <- p_value
+                    
+                  }
+                  
+                  # Write counts table at results folder
+                  write_table(paste0("DiBaAn-page ",page, " Counts per Cluster (Table 1).tab"),chi_matrix,"table")
+                  # Write Expected-observed p-values at results folder
+                  write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                  # Write pairwise p-values at results folder
+                  write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                  
+                  if (sum(nchar(colnames(chi_matrix))) < 80) {
+                    
+                    # Tile of the page
+                    text1 <- paste("Only the reference group has factors for the",exploratory_columns[k],"column.")
+                    
+                    # Create a text grob for the title
+                    tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                    
+                    # Tile of the p-value tables
+                    text2 <- "P-values of the Chi-square test (Goodness of Fit)"
+                    
+                    # Create a text grob for the title
+                    tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
+                    
+                    # Arrange in the grid the above elements
+                    grid.arrange(tgrob,gtableGrob("Counts per Cluster (Table 1)",chi_matrix,setDT="YES",size=12),
+                                 arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
+                                 nrow = 3,heights=c(0.4,1,2))
+                  } else {
+                    text1 <- paste("Only the reference group has factors for the",exploratory_columns[k],"column.")
+                    
+                    # Create a text grob for the title
+                    tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                    
+                    # Tile of the p-value tables
+                    text2 <-  "The tables are too big to be printed!!\nYou can find them in .tab format in the results folder."
+                    
+                    # Create a text grob for the title
+                    tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
+                    
+                    grid.arrange(tgrob,tgrob2,nrow=2)
+                    
+                  }
+                  
+                } else { 
+                  
+                  for(i in 1:length(Test_name)){
+                    
+                    # Index indicating the page of the report
+                    page <- page+1
+                    
+                    # Subset the names of the reference group
+                    names_ref <-rownames(input_table[which(input_table[,1] %in% reference_name),])
+                    # Subset the names of each test group
+                    names_test <- rownames(input_table[input_table[,1] == Test_name[i],])
+                    
+                    # Extract the factors of the reference group
+                    factor_ref <- factor(meta_file[names_ref,exploratory_columns[k]],levels=unique(meta_file[names_ref,exploratory_columns[k]]))
+                    # Extract the factors of each test group
+                    factor_test <- factor(meta_file[names_test,exploratory_columns[k]],levels=unique(meta_file[names_test,exploratory_columns[k]]))
+                    
+                    if (nlevels(factor_ref) > 0 | nlevels(factor_test) > 0){
+                      # Check if one or two matrices will be formed 
+                      if (length(which(levels(factor_ref) %in% levels(factor_test) == TRUE)) > 1 & nlevels(factor_ref) > 1 & nlevels(factor_test) > 1){
+                        
+                        # Form the matrix where the counts of the observations will be placed
+                        chi_ref <- data.frame(matrix(ncol = (nlevels(factor_ref)) , nrow = reference_clusters))
+                        # Naming the rows of the chi_ref
+                        rownames(chi_ref) <- paste(reference_name,1:reference_clusters)
+                        # Naming the columns of the chi_ref
+                        colnames(chi_ref) <- levels(factor_ref)
+                        
+                        # Form the matrix where the counts of the observations will be placed
+                        chi_test <- data.frame(matrix(ncol = (nlevels(factor_test)) , nrow = reference_clusters))
+                        # Naming the rows of the chi_test
+                        rownames(chi_test) <- paste(reference_name,1:reference_clusters)
+                        # Naming the columns of the chi_ref
+                        colnames(chi_test) <- levels(factor_test)
+                        
+                        for (ii in 1:reference_clusters){
+                          # Subset the names of the reference group for each cluster
+                          names2_ref <- rownames(mapping_file[mapping_file[,1]==paste(reference_name,ii),])
+                          for (iii in 1:nlevels(factor_ref)){
+                            # Place the counts in the chi_ref
+                            chi_ref[ii,iii] <- length(which(meta_file[names2_ref,exploratory_columns[k]]==levels(factor_ref)[iii]))
+                          }
+                        }
+                        
+                        # Replace 0 with 0.01
+                        chi_ref[chi_ref == 0] <- 0.01
+                        
+                        for (ii in 1:reference_clusters){
+                          
+                          # Subset the names of the test group for each cluster
+                          names2_test <- distances_matrix[distances_matrix[,"Nearest reference cluster"] == ii,]
+                          names2_test <- rownames(names2_test[rownames(names2_test)%in% names_test,])
+                          
+                          for (iii in 1:nlevels(factor_test)){
+                            # Place the counts in the chi_test matrix
+                            chi_test[ii,iii] <- length(which(meta_file[names2_test,exploratory_columns[k]]==levels(factor_test)[iii]))
+                          }
+                        }
+                        
+                        # Replace 0 with 0.01
+                        chi_test[chi_test == 0] <- 0.01
+                        
+                        
+                        # Performing Chi-square test(Goodness of fit) for each column of chi_ref
+                        exp_col_ref <- round(apply(chi_ref,2,function(x) chisq.test(x)$p.value),4)
+                        
+                        # Performing Chi-square test(Goodness of fit) for each row of chi_ref
+                        exp <-apply(chi_ref,2,sum)/reference_clusters
+                        exp_r_ref <- round(apply(chi_ref,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value),4)
+                        
+                        # Performing Chi-square test(Goodness of fit) for each column of chi_test
+                        exp_col_test <- round(apply(chi_test,2,function(x) chisq.test(x)$p.value),4)
+                        
+                        # Performing Chi-square test(Goodness of fit) for each row of chi_test
+                        exp <-apply(chi_test,2,sum)/reference_clusters
+                        exp_r_test <- round(apply(chi_test,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value),4)
+                        
+                        # Performing fdr correction
+                        adjustb <- round(p.adjust(c(exp_col_ref,exp_r_ref,exp_col_test,exp_r_test), method = "BH"),4)
+                        # Add the adjusted p-values in the expected matrix
+                        expected <- data.frame(cbind(c(exp_col_ref,exp_r_ref,exp_col_test,exp_r_test),adjustb))
+                        # Naming the columns of p_value data frame
+                        colnames(expected) <- c( "P-values","Adj p-values")
+                        # Naming the rows of p_value data frame
+                        rownames(expected) <- c(paste(names(exp_col_ref),"(Ref)"),paste(names(exp_r_ref),"(Ref)"),paste0(names(exp_col_test),"(",Test_name[i],")"),paste(names(exp_r_test),"(",Test_name[i],")"))
+                        
+                        
+                        # Order the p-values
+                        expected <- expected[order(expected[,2]),]
+                        # Choose the first 10 most significant p-values
+                        if (nrow(expected)>10) {expected2 <- expected[1:10,]} else {expected2 <- expected}
+                        
+                        
+                        # Find all the available pairwise combinations for the reference group
+                        combs <- combs(levels(factor_ref), 2)
+                        # Save the names of that combinations
+                        group_names <- apply(combs,1,function(x)paste0(x[1],"(Ref)-",x[2],"(Ref)"))
+                        
+                        
+                        # P_value -> a vector where the p values will be stored
+                        chi_p_value_ref <- c(); test <- c()
+                        for(chii in 1:nrow(combs)) { 
+                          # Performed the Chi square test
+                          chi_p_value_ref[chii] <- round(chisq.test(chi_ref[,combs[chii,2]],p=chi_ref[,combs[chii,1]],rescale.p = TRUE)$p.value,4) 
+                        }
+                        
+                        #------------ Rows pairwise comparisons ----------#
+                        # Find all the available pairwise combinations for the reference group
+                        combs <- combs(rownames(chi_ref), 2)
+                        # Save the names of that combinations
+                        group_names_rows <- apply(combs,1,function(x)paste0(x[1],"(Ref)-",x[2],"(Ref)"))
+                        
+                        
+                        # P_value -> a vector where the p values will be stored
+                        chi_p_value_ref_rows <- c(); test <- c()
+                        for(chii in 1:nrow(combs)) { 
+                          # Performed the Chi square test
+                          chi_p_value_ref_rows[chii] <- round(chisq.test(as.numeric(chi_ref[combs[chii,2],]),p=as.numeric(chi_ref[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
+                        
+                        # Replace 0.01 with 0
+                        chi_ref[chi_ref == 0.01] <- 0
+                        
+                        
+                        # Forming the data frame containing the p values
+                        p_value_ref <- data.frame(group_names)
+                        # Naming the rows of the p_value data frame
+                        p_value_ref[,2] <- chi_p_value_ref
+                        # Naming the columns of p_value data frame
+                        colnames(p_value_ref) <- c("Groups","p value")
+                        
+                        
+                        # Forming the data frame containing the p values
+                        p_value_ref_rows <- data.frame(group_names_rows)
+                        # Naming the rows of the p_value data frame
+                        p_value_ref_rows[,2] <- chi_p_value_ref_rows
+                        # Naming the columns of p_value data frame
+                        colnames(p_value_ref_rows) <- c("Groups","p value")
+                        
+                        # Find all the available pairwise combinations for the test groups
+                        combs <- combs(levels(factor_test), 2)
+                        # Save the names of that combinations
+                        group_names <- apply(combs,1,function(x)paste0(x[1],"(",Test_name[i],")-",x[2],"(",Test_name[i],")"))
+                        
+                        
+                        # P_value -> a vector where the p values will be stored
+                        chi_p_value_test <- c(); test <- c()
+                        for(chii in 1:nrow(combs)) { 
+                          # Performed the Chi square test
+                          chi_p_value_test[chii] <- round(chisq.test(chi_test[,combs[chii,2]],p=chi_test[,combs[chii,1]],rescale.p = TRUE)$p.value,4)
+                        }
+                        
+                        
+                        #------------ Rows pairwise comparisons ----------#
+                        
+                        # Find all the available pairwise combinations for the test groups
+                        combs <- combs(rownames(chi_test), 2)
+                        # Save the names of that combinations
+                        group_names_rows <- apply(combs,1,function(x)paste0(x[1],"(",Test_name[i],")-",x[2],"(",Test_name[i],")"))
+                        
+                        
+                        # P_value -> a vector where the p values will be stored
+                        chi_p_value_test_rows <- c(); test <- c()
+                        for(chii in 1:nrow(combs)) { 
+                          # Performed the Chi square test
+                          chi_p_value_test_rows[chii] <- round(chisq.test(as.numeric(chi_test[combs[chii,2],]),p=as.numeric(chi_test[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
+                        
+                        # Replace 0.01 with 0
+                        chi_test[chi_test == 0.01] <- 0
+                        
+                        
+                        
+                        # Forming the data frame containing the p values
+                        p_value_test <- data.frame(group_names)
+                        # Naming the rows of the p_value data frame
+                        p_value_test[,2] <- chi_p_value_test
+                        # Naming the columns of p_value data frame
+                        colnames(p_value_test) <- c("Groups","p value")
+                        
+                        
+                        # Forming the data frame containing the p values
+                        p_value_test_rows <- data.frame(group_names_rows)
+                        # Naming the rows of the p_value data frame
+                        p_value_test_rows[,2] <- chi_p_value_test_rows
+                        # Naming the columns of p_value data frame
+                        colnames(p_value_test_rows) <- c("Groups","p value")
+                        
+                        
+                        
+                        # Form a data frame where the p-values for the coompn factors will be placed 
+                        common <- data.frame()
+                        # row index initiation
+                        row <- 0
+                        for(l in 1:nlevels(factor_ref)){
+                          
+                          if (length(which(levels(factor_ref)[l] == levels(factor_test)) == 1)){
+                            # Add a row
+                            row <- row+1
+                            # Add the name of the row
+                            common[row,1] <- paste0(levels(factor_ref)[l],"(Ref) -",levels(factor_ref)[l],"(",Test_name[i],")")
+                            # Perform Chi-square test
+                            common[row,2] <-  round(chisq.test(chi_test[,levels(factor_ref)[l]],p=chi_ref[,levels(factor_ref)[l]],rescale.p = TRUE)$p.value,4)
+                            # Naming the columns
+                            colnames(common) <- c("Groups","p value")
+                          }
+                        }
+                        
+                        # rbind all the p-values
+                        p_value <- rbind(p_value_ref,p_value_test,p_value_ref_rows,p_value_test_rows,common)
+                        
+                        # Convert p-values column into numeric
+                        p_value[,2] <- as.numeric(p_value[,2])
+                        # Perform fdr correction
+                        p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)
+                        # Add the adjusted p-values in the pvalues matrix
+                        p_value[,3] <- p.adjust
+                        # Naming the columns of p_value data frame
+                        colnames(p_value) <- c("Groups","p value","Adj p-values")
+                        # Order the p-values
+                        p_value <- p_value[order(p_value[,3]),]
+                        # Choose the first 10 most significant p-values
+                        if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
+                        
+                        # Write Reference counts table at result folder
+                        write_table(paste0("DiBaAn-page ",page," ",reference_name," Group (Table 1).tab"),chi_ref,"table")
+                        # Write test counts table at result folder
+                        write_table(paste0("DiBaAn-page ",page," ",Test_name[i]," Group (Table 2).tab"),chi_test,"table")
+                        # Write Expected-observed p-values at result folder
+                        write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                        # Write pairwise p-values at result folder
+                        write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                        
+                        if ((sum(nchar(colnames(chi_ref)))+sum(nchar(colnames(chi_test)))) < 80){
+                          # Tile of the page
+                          text1 <- paste0(exploratory_columns[k],"-",Test_name[i])
+                          
+                          # Create a text grob for the title
+                          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                          
+                          # Tile of the p-value tables
+                          text1 <- "P-values of the Chi-square test (Goodness of Fit)"
+                          
+                          # Create a text grob for the title
+                          tgrob2 <- text_grob(text1,face = "bold.italic", color = "Black",size=12)
+                          
+                          # Arrange in the grid the above elements
+                          grid.arrange(tgrob,arrangeGrob(gtableGrob(paste(reference_name,"Group (Table 1)"),chi_ref,setDT="YES",size=12),gtableGrob(paste(Test_name[i],"Group (Table 2)"),chi_test,setDT="YES",size=12),nrow=1)
+                                       , arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1))
+                                       , ncol = 1, nrow = 3,heights=c(0.4,1,2))
+                        } else {
+                          text1 <- paste(exploratory_columns[k],"-",Test_name[i])
+                          
+                          # Create a text grob for the title
+                          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                          
+                          # Tile of the p-value tables
+                          text2 <-"The tables are too big to be printed!!\nYou can find them in .tab format in the results folder."
+                          
+                          # Create a text grob for the title
+                          tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
+                          
+                          grid.arrange(tgrob,tgrob2,nrow=2)
+                        }
+                        
+                        
+                      } else {
+                        
+                        # Form the matrix where the counts of the observations will be placed
+                        chi_matrix <- data.frame(matrix(ncol = (nlevels(factor_ref)+nlevels(factor_test)) , nrow = reference_clusters))
+                        # Naming the rows of the chi matrix
+                        rownames(chi_matrix) <- paste(reference_name,1:reference_clusters)
+                        if (nlevels(factor_ref) == 0){
+                          # Naming the columns of the chi matrix
+                          colnames(chi_matrix) <- c(paste(paste0(levels(factor(factor_test,levels=unique(factor_test))),"(",Test_name[i],")")))
+                        }else if (nlevels(factor_test) == 0){
+                          # Naming the columns of the chi matrix
+                          colnames(chi_matrix) <- c(paste(levels(factor(factor_ref,levels=unique(factor_ref))),"(Ref)"))
+                        } else {
+                          # Naming the columns of the chi matrix
+                          colnames(chi_matrix) <- c(paste(levels(factor(factor_ref,levels=unique(factor_ref))),"(Ref)"),paste0(levels(factor(factor_test,levels=unique(factor_test))),"(",Test_name[i],")"))
+                        }
+                        
+                        if (nlevels(factor_ref) > 0){
+                          for (ii in 1:reference_clusters){
+                            # Subset the names of the reference group
+                            names2 <- rownames(mapping_file[mapping_file[,1] == paste(reference_name,ii),])
+                            for (iii in 1:nlevels(factor_ref)){
+                              # Place the counts of the reference group in the chi matrix
+                              chi_matrix[ii,iii] <- length(which(meta_file[names2,exploratory_columns[k]]==levels(factor_ref)[iii]))
+                            }
+                          }
+                        }
+                        
+                        if (nlevels(factor_test) > 0){
+                          for (ii in 1:reference_clusters){
+                            # Subset the names of the test group for each cluster
+                            names2_test <- distances_matrix[distances_matrix[,"Nearest reference cluster"] == ii,]
+                            names2_test <- rownames(names2_test[rownames(names2_test) %in% names_test,])
+                            
+                            
+                            for (iii in 1:nlevels(factor_test)){
+                              # Place the counts of the test group in the chi matrix
+                              chi_matrix[ii,(iii+nlevels(factor_ref))] <- length(which(meta_file[names2_test,exploratory_columns[k]] == levels(factor_test)[iii]))
+                            }
+                          }
+                        }
+                        
+                        # Replace 0 with 0.01
+                        chi_matrix[chi_matrix == 0] <- 0.01
+                        
+                        # Performing Chi-square test(Goodness of fit) for each column
+                        exp_col <- round(apply(chi_matrix,2,function(x) chisq.test(x)$p.value),4)
+                        
+                        if (ncol(chi_matrix) > 1){
+                          # Performing Chi-square test(Goodness of fit) for each row
+                          exp <-apply(chi_matrix,2,sum)/reference_clusters 
+                          exp_r <- round(apply(chi_matrix,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value),4)
+                          
+                          
+                          # Performing fdr correction
+                          adjustb <- round(p.adjust(c(exp_col,exp_r), method = "BH"),4)
+                          # Add the adjusted p-values in the pvalues matrix
+                          expected <- data.frame(cbind(c(exp_col,exp_r),adjustb))
+                          colnames(expected) <- c( "P-values","Adj p-values")
+                          
+                        } else {
+                          
+                          # Performing fdr correction
+                          adjustb <- round(p.adjust(c(exp_col), method = "BH"),4)
+                          # Add the adjusted p-values in the pvalues matrix
+                          expected <- data.frame(cbind(exp_col,adjustb))
+                          # Naming the rows of p_value data frame
+                          rownames(expected) <- c(names(exp_col))
+                        }
+                        # Naming the columns of expected data frame
+                        colnames(expected) <- c( "P-values","Adj p-values")
+                        
+                        
+                        # Order the p-values
+                        expected <- expected[order(expected[,2]),]
+                        # Choose the first 10 most significant p-values
+                        if (nrow(expected) > 10) {expected2 <- expected[1:10,]} else {expected2 <- expected}
+                        
+                        if(ncol(chi_matrix) > 1){
+                          # Find all the available pairwise combinations
+                          combs <- combs(colnames(chi_matrix),2)
+                          # Save the names of that combinations
+                          group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+                          
+                          
+                          # P_value -> a vector where the p values will be stored
+                          chi_p_value <- c(); test <- c()
+                          for(chii in 1:nrow(combs)) { 
+                            # Performed the Chi square test
+                            chi_p_value[chii] <- round(chisq.test(chi_matrix[,combs[chii,2]],p=chi_matrix[,combs[chii,1]],rescale.p = TRUE)$p.value,4) }
+                          
+                          #---------- Rows pairwise comparisons ----------#
+                          
+                          # Find all the available pairwise combinations
+                          combs <- combs(rownames(chi_matrix),2)
+                          # Save the names of that combinations
+                          group_names_rows <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+                          
+                          
+                          # P_value -> a vector where the p values will be stored
+                          chi_p_value_rows <- c(); test <- c()
+                          for(chii in 1:nrow(combs)) { 
+                            # Performed the Chi square test
+                            chi_p_value_rows[chii] <- round(chisq.test(as.numeric(chi_matrix[combs[chii,2],]),p=as.numeric(chi_matrix[combs[chii,1],]),rescale.p = TRUE)$p.value,4) }
+                          
+                          # Replace 0.01 with 0
+                          chi_matrix[chi_matrix == 0.01] <- 0
+                          
+                          
+                          # Forming the data frame containing the p values
+                          p_value <- data.frame(group_names)
+                          # Naming the rows of the p_value data frame
+                          p_value[,2] <- chi_p_value
+                          # Naming the columns of p_value data frame
+                          colnames(p_value) <- c("Groups","p value")
+                          
+                          
+                          # Forming the data frame containing the p values
+                          p_value_rows <- data.frame(group_names_rows)
+                          # Naming the rows of the p_value data frame
+                          p_value_rows[,2] <- chi_p_value_rows
+                          # Naming the columns of p_value data frame
+                          colnames(p_value_rows) <- c("Groups","p value")
+                          
+                          # rbind all the p-values
+                          p_value <- rbind(p_value,p_value_rows)
+                          
+                          
+                          # Convert p-values column into numeric
+                          p_value[,2] <- as.numeric(p_value[,2])
+                          # Performing fdr correction
+                          p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)  
+                          # Add the adjusted p-values in the pvalues matrix
+                          p_value[,3] <- p.adjust
+                          # Naming the columns of p_value data frame
+                          colnames(p_value) <- c("Groups","p value","Adj p-values")
+                          # Order the p-values
+                          p_value <- p_value[order(p_value[,3]),]
+                          # Choose the first 10 most significant p-values
+                          if (nrow(p_value) > 10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
+                          
+                        } else {
+                          
+                          # Replace 0.01 with 0
+                          chi_matrix[chi_matrix == 0.01] <- 0
+                          
+                          # Create the dataframe when there is only one column
+                          p_value <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
+                          colnames(p_value) <- c("","")
+                          rownames(p_value) <- c("")
+                          p_value2 <- p_value
+                        }
+                        
+                        # Write counts table at results folder
+                        write_table(paste0("DiBaAn-page ",page, " Counts per Cluster (Table 1).tab"),chi_matrix,"table")
+                        # Write Expected-observed p-values at results folder
+                        write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                        # Write pairwise p-values at results folder
+                        write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                        
+                        if (sum(nchar(colnames(chi_matrix))) < 80) {
+                          
+                          # Tile of the page
+                          text1 <- paste(exploratory_columns[k],"-",Test_name[i])
+                          
+                          # Create a text grob for the title
+                          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                          
+                          # Tile of the p-value tables
+                          text2 <- "P-values of the Chi-square test (Goodness of Fit)"
+                          
+                          # Create a text grob for the title
+                          tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
+                          
+                          # Arrange in the grid the above elements
+                          grid.arrange(tgrob,gtableGrob("Counts per Cluster (Table 1)",chi_matrix,setDT="YES",size=12),
+                                       arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
+                                       nrow = 3,heights=c(0.4,1,2))
+                        } else {
+                          text1 <- paste(exploratory_columns[k],"-",Test_name[i])
+                          
+                          # Create a text grob for the title
+                          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                          
+                          # Tile of the p-value tables
+                          text2 <-  "The tables are too big to be printed!!\nYou can find them in .tab format in the results folder."
+                          
+                          # Create a text grob for the title
+                          tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
+                          
+                          grid.arrange(tgrob,tgrob2,nrow=2)
+                          
+                        }
+                      }
+                      
+                    } else {
+                      # Tile of the page
+                      text1 <- paste0(exploratory_columns[k],"-", Test_name[i])
+                      
+                      # Create a text grob for the title
+                      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+                      
+                      # Main text of the page
+                      text2 <- paste0("It was not possible to perform the chi-square test for the '",Test_name[i],"'.\n There were no factors!")
+                      
+                      # Create a text grob for the text
+                      tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+                      
+                      
+                      # Arrange in the grid the above elements
+                      grid.arrange(tgrob,tgrob2 ,nrow=2)
+                    }
+                  }
+                }
+              }
+            }
+            
+            
+            #-------Perform Statistical analysis for the numerical variables------------#
+            
+            for (k in 1:length(exploratory_columns)){
+              
+              
+              # Check if the column is character of factor
+              if (is.numeric(meta_file[,exploratory_columns[k]])==TRUE ){
+                
+                # Index indicating the page of the report
+                page <- page+1
+                
+                # Tile of the page
+                text1 <- paste0("'",exploratory_columns[k],"' Column")
+                
+                # Create a text grob for the title
+                tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+                
+                # Main text of the page
+                text <- paste0("The relationship between the reference, test groups and the  \n'",exploratory_columns[k],"' column will be examined in the following page.\n\n",
+                               "The distribution of the values of the '",exploratory_columns[k],"' column  across the groups \nis presented in the form of ",plot_type, ".\n\n",
+                               "The p-values of the pairwise Wilcoxon Rank Sum tests \n are presented in the following tables.\n\n",
+                               "The tables contain only the 10 most significant p-values. The rest of the p-values \nhave been printed in the results folder.")
+                
+                # Create a text grob for the text
+                tgrob2 <- text_grob(text,face = "italic", color = "Black",size=13)
                 
                 
                 # Arrange in the grid the above elements
-                grid.arrange(tgrob,tgrob2 ,nrow=2)
+                grid.arrange(tgrob,tgrob2,nrow=3)
+                
+                
+                # Index indicating the page of the report
+                page <- page+1
+                
+                # Create list where the plots will be stored
+                list_box_will <- list()
+                list_point_will <- list()
+                list_violin_will<-list()
+                pvaltable_wil <- list()
+                
+                # Index that indicates the number of plots that will be printed
+                number_plots <- 0
+                
+                # There will be two plots. The first will be the entire groups and the second the clustered reference group
+                for(type in 1:2){
+                  
+                  # Form the data frame that contains the labels and the values of the exloratory column
+                  values_matrix <- data.frame(input_table[rownames(meta_file),type],meta_file[,exploratory_columns[k]])
+                  # Convert the first column into factor
+                  values_matrix[,1] <- as.factor(values_matrix[,1])
+                  
+                  # Remove NA values
+                  for (f in 1:nlevels(values_matrix[,1])){
+                    if (all(is.na(values_matrix[(values_matrix[,1]==levels(values_matrix[,1])[f])==TRUE,2]))) {
+                      values_matrix <- values_matrix[-which((values_matrix[,1]==levels(values_matrix[,1])[f])==TRUE),] 
+                    }
+                  }
+                  
+                  # If the values_matrix is not empty perform stastistical analysis
+                  if (nrow(values_matrix)>0){
+                    
+                    # Add a plot in the page
+                    number_plots <- number_plots+1
+                    
+                    # Convert the first column into factor
+                    values_matrix[,1] <- factor(values_matrix[,1],levels = unique(values_matrix[,1]))
+                    
+                    # add the prevalence of each factor as label column
+                    values_matrix <- data.frame(values_matrix,label=prevalence(values_matrix,column=2))
+                    
+                    # Convert label column into factor
+                    values_matrix$label <- factor(values_matrix$label,levels = unique(values_matrix$label))
+                    
+                    # Create a new data frame that will be used for the graphs
+                    values_plot_matrix <- cbind.data.frame(Group=as.factor(values_matrix[,1]),abundance = as.numeric(values_matrix[,2]),label = factor(values_matrix[,3]))
+                    
+                    # Store the colours that will be used in the plot
+                    color <- colour_matrix[levels(factor(values_plot_matrix[,1],levels = unique(values_plot_matrix[,1]))),2]
+                    
+                    # Check if there is more than one group and calculate the p values
+                    if (nlevels(values_plot_matrix[,1])>1){
+                      if (type==1){
+                        p_values <- pvalues_function(values_plot_matrix,"DiBaAn-",page,"(Table 1)")
+                      } else {
+                        p_values <- pvalues_function(values_plot_matrix,"DiBaAn-",page,"(Table 2)")
+                      }
+                    } else {
+                      p_values <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
+                      colnames(p_values) <- c("","")
+                      rownames(p_values) <- c("")
+                    }
+                    
+                    
+                    if (type==1){
+                      # gtable of the p-values
+                      pvaltable_wil[[number_plots]] <- gtableGrob("Wilcoxon Rank Sum Test - pairwise(Table 1)",p_values,setDT="NO",size=9)
+                    } else {
+                      pvaltable_wil[[number_plots]] <- gtableGrob("Wilcoxon Rank Sum Test - pairwise(Table 2)",p_values,setDT="NO",size=9)
+                      
+                    }
+                    
+                    # Store the titles of the plots
+                    if (type==1){
+                      # The name that will be used as the title for the plots 
+                      my_name <- paste0(exploratory_columns[k]," (Fig. 1)")
+                    } else {
+                      my_name <- paste0(exploratory_columns[k],"-clustered (Fig. 2)")
+                    }
+                    
+                    
+                    # Save the boxplot object in the list
+                    list_box_will[[number_plots]] <- my_boxplot(my_name,values_plot_matrix,label,abundance,color)
+                    
+                    # Save the boxplot with points object in the list
+                    list_point_will[[number_plots]] <- my_point_boxplot(my_name,values_plot_matrix,label,abundance,color)
+                    
+                    # Save the violin object in the list
+                    list_violin_will[[number_plots]] <- my_violinplot(my_name,values_plot_matrix,label,abundance,color)
+                    
+                  }
+                }
+                
+                # Check if there will be one or two plots
+                if (reference_clusters==1 | all(is.na(meta_file[input_table[,1]==reference_name,exploratory_columns[k]]))) {number_plots <- number_plots-1}
+                
+                # print the plots
+                if (plot_type == "Boxplots") {plot <-list_box_will } else if (plot_type == "Point plots") {plot <-list_point_will } else {plot <-list_violin_will}
+                
+                if (number_plots==2){
+                  
+                  # Arrange in the grid the above elements
+                  grid.arrange(arrangeGrob( plot[[1]],plot[[2]],nrow = 1,ncol=2,widths = c(1,1.1)),arrangeGrob( pvaltable_wil[[1]],pvaltable_wil[[2]],nrow = 1,ncol=2,widths = c(1,1)),nrow = 2,as.table = T,heights=c(1.4,1))
+                  # print the plots in png format
+                  png_plot(paste0("DiBaAn-page",page, paste0(" ",exploratory_columns[k],"(Fig. 1)"),".png"), plot[[1]])
+                  png_plot(paste0("DiBaAn-page",page, paste0(" ",exploratory_columns[k],"-clustered (Fig. 2)"),".png"), plot[[2]])
+                  
+                } else if (number_plots==1){
+                  
+                  # Arrange in the grid the above elements
+                  grid.arrange(arrangeGrob( plot[[1]],pvaltable_wil[[1]],nrow = 1,ncol=2,widths = c(1,1)),nrow = 2,as.table = T,heights=c(2.5,1))
+                  # print the plots in png format
+                  png_plot(paste0("DiBaAn-page",page, paste0(" ",exploratory_columns[k],"(Fig. 1)"),".png"), plot[[1]])
+                  
+                  # Print a massage if all the values are NA 
+                } else {
+                  
+                  # Tile of the page
+                  text1 <- paste0("'",exploratory_columns[k],"' Column")
+                  
+                  # Create a text grob for the title
+                  tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+                  
+                  # Main text of the page
+                  text2 <- paste0("It was not possible to perform the Wilcoxon Rank Sum test for the '",exploratory_columns[k],"'.\n All values are missing!! ")
+                  
+                  # Create a text grob for the text
+                  tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+                  
+                  # Arrange in the grid the above elements
+                  grid.arrange(tgrob,tgrob2 ,nrow=2)
+                }
               }
-            }  
             }
-            
-          } else {
-            
-            
-            # Tile of the page
-            text1 <- paste0("'",exploratory_columns[k],"' Column")
-            
-            # Create a text grob for the title
-            tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
-            
-            # Main text of the page
-            text2 <- paste0("It was not possible to perform the chi-square test for the '",exploratory_columns[k],"'. The variable must be categorical ")
-            
-            # Create a text grob for the text
-            tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
-            
-            
-            # Arrange in the grid the above elements
-            grid.arrange(tgrob,tgrob2 ,nrow=2)
           }
-        }
-      }
-      
-      
-      ############### Page (self-medoid) ############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Description of the list_box3
-      text <- paste0(plot_type," displaying the distribution of the distances around their own self-",central_point,".\n",
-                     "The plots can provide information about the compactness of the groups.")
-      
-      
-      # Create a text grob for the Description of the list_box3
-      tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
-      
-      # Choose the selected type of plot
-      if (plot_type == "Boxplots") {plot <-list_box3 } else if (plot_type == "Point plots") {plot <- list_point3 } else {plot <- list_violin3}
-      
-      # Arrange in the grid the above elements
-      grid.arrange(arrangeGrob(plot,pvaltable3,nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
-      
-      
-      # Print the plot in png format
-      png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
-      
-      ############# Page (closest reference cluster) ##########
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      
-      # Title of the 6th page 
-      text1 <- paste("Distances From the Closest Reference",central_point)
-      
-      # Create a text grob for the title
-      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-      
-      # Description of the observations matrix
-      text2 <- paste0("The closest reference ",central_point, " was found for every sample of the test groups.\n 
-                   The above matrix presents the number of the sample of each test group \n from the closest reference cluster(",central_point,").\n
-                   Based on this information in the next page the ",plot_type," of the \n distances from the nearest reference ",central_point," were formed.")
-      
-      
-      # Create a text grob for the description of the observations matrix
-      tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=13)
-      
-      # Arrange in the grid the above elements
-      grid.arrange(tgrob,observation,tgrob2,nrow=3,heights=c(0.4,1,1.5))
-      
-      
-      
-      ############### Page (Boxplot-closest reference medoid) ###########  
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Description of the list_box5
-      text <- paste0(plot_type," displaying the distribution of the distances \n",
-                     "from their nearest reference ",toupper(central_point),".\n",
-                     "The columns represent the clusters that have been derived \n",
-                     "from the de novo clustering of the reference and tests samples.\n",
-                     "\n",
-                     
-                     "*Only the top-10 most significant p-values are displayed.\n"," The rest of them are at the results folder.")
-      
-      # Create a text grob for the list_box5
-      tgrob <- text_grob(text, face = "italic", color = "Black",size=13)
-      
-      # Choose the selected type of plot
-      if (plot_type == "Boxplots") {plot <-list_box5 } else if (plot_type == "Point plots") {plot <- list_point5 } else {plot <- list_violin5}
-      
-      
-      # Arrange in the grid the above elements
-      grid.arrange(arrangeGrob( plot,pvaltable5,nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
-      
-      # Print the plot in png format
-      png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
-      
-      
-      ############### Page (median distances table) ############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      # Title of the page 
-      text1 <- "Distances from the closest reference cluster"
-      # Create a text grob for the title
-      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
-      
-      # Description of the matrix of the median distances
-      text2 <- paste("For each group the median distance of the sample from \n every reference",central_point, "was calculated. \n Then, the closest reference cluster was found.\n
-              Based on the information of the above matrix, the",plot_type,"of the distances from \n the closest reference GROUP were formed.\n
-              * More cluster-related results will be found at the results folder.")
-      # Create a text grob for the median matrix
-      tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=13)
-      
-      
-      # Arrange in the grid the above elements
-      grid.arrange(tgrob,median_matrix_table,tgrob2,nrow=3,heights=c(0.4,1,1.5))
-      
-      
-      
-      ############# Page (Boxplots closest reference cluster) ############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      
-      
-      # Description of the list_box4
-      text <- paste(plot_type,"displaying the distribution of the distances of the test samples \n",
-                    "from their nearest reference cluster.\n",
-                    "\n",
-                    "On the next pages each reference cluster will be examined seperatly.")
-      # Create a text grob for the list_box4
-      tgrob <- text_grob(text, face = "italic", color = "Black",size=13)
-      
-      # Choose the selected type of plot
-      if (plot_type == "Boxplots") {plot <-list_box4 } else if (plot_type == "Point plots") {plot <- list_point4 } else {plot <- list_violin4}
-      
-      
-      # Arrange in the grid the above elements
-      grid.arrange(arrangeGrob(plot,pvaltable4,nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
-      
-      # Print the plot in png format
-      png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
-      
-      
-      ############ Pages (individual cluster analysis) ###############
-      
-      for (cluster in 1:reference_clusters){
-        
-        # Subset the samples
-        report_plot <- data.frame(plot_df_b[dist_plot_4[,3] == cluster,])
-        # Name the rows
-        rownames(report_plot) <- rownames(dist_plot_4[dist_plot_4[,3]==cluster,])
-        # Convert label column into factor
-        report_plot$label <- factor(report_plot$label,levels = unique(report_plot$label))
-        
-        # Store the colours that will be used in the plot
-        color <- colour_matrix[levels(factor(report_plot[,1],levels = unique(report_plot[,1]))),2]
-        
-        
-        # Save the boxplot object in the list
-        my_name <- "Closest Reference Cluster"
-        boxplot_list[[cluster]] <- list()
-        boxplot_list[[cluster]] <- my_boxplot(my_name,report_plot,label,abundance,color)
-        
-        pointplot_list[[cluster]] <- list()
-        pointplot_list[[cluster]] <- my_point_boxplot(my_name,report_plot,label,abundance,color)
-        
-        violinplot_list[[cluster]] <- list()
-        violinplot_list[[cluster]] <- my_violinplot(my_name,report_plot,label,abundance,color)
-      }
-      
-      for (cluster in 1:reference_clusters) {
-        if (length(rownames(dist_plot_4[dist_plot_4$cluster==cluster,]))>2){
+          
+          ############ Page (Percentages of each cluster) ##########
           
           # Index indicating the page of the report
           page <- page+1
           
-          if (nlevels(as.factor(dist_plot_4[dist_plot_4$cluster==cluster,1])) == 1) {
-            pvaluesb <- data.frame("NA")
-            colnames(pvaluesb) <- "pvalues"
+          # Tile of the page
+          text1 <- "Percentages of each cluster"
+          
+          # Create a text grob for the title
+          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+          
+          # Arrange in the grid the above elements
+          grid.arrange(tgrob,percentage_table, barplot, ncol = 1, nrow = 3,heights=c(0.4,1.2,1.5))
+          
+          # Print the Barplot in png format
+          png_plot(paste("DiBaAn-page",page, "Barplot.png"),barplot)
+        }
+        
+        
+        ############ Page (MDS reference clusters and the distances-based clusters) ########
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Set the layout of the cover page (3 rows, 1 column)
+        layout(matrix(c(1, 1, 1,
+                        2, 2, 2,
+                        3, 3, 3), nrow=3, byrow=TRUE),heights=c(0.3,3,1) )
+        
+        # Set narrow margings for the last plot
+        par(mar = c(0.1, 0.1, 3.5, 0.1))
+        # Create an empty plot
+        plot.new()
+        # Title for the empty plot
+        title(main="MDS Plot",cex.main = 1.7)
+        
+        # MDS plot presenting the reference clusters and the distances-based clusters of the test groups
+        sclass(unifract_dist,factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),NULL,colour_matrix[colour_matrix[,1]%in%factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),2])
+        
+        # Create an empty plot
+        plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+        # Description of the MDS plot
+        text(x=0.5, y = 0.8, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") clustered into ",test_clusters, " Groups\n", "and the test samples (" ,paste(Test_name,collapse="-"), ")\n",
+                                    "clustered into groups based on their distances from the closest reference ",central_point,"." ), cex = 1.5, col = "black")
+        
+        # Default margins
+        par(mar= c(5.1, 4.1, 4.1, 2.1))
+        
+        # Print the MDS plot in png format
+        png_plot(paste("DiBaAn-page",page, "MDS Plot.png"),sclass(unifract_dist,factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),NULL,colour_matrix[colour_matrix[,1]%in%factor(plot_matrix[,ncol(plot_matrix)],levels = unique(plot_matrix[,ncol(plot_matrix)])),2]))
+        
+        ######### Page (boxplots BD clustering) ########
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Description of list_box
+        text <- paste0("The test samples have been clustered based on their distances from the\n", "closest reference ",central_point,".\n",
+                       "The ",plot_type, " present the distribution of distances of each of these samples from \n",
+                       "their nearest reference cluster\n",
+                       "The p-values for every reference cluster and its nearest test clusters are displayed.\n",
+                       "On the next pages each reference cluster will be examined seperatly.")
+        
+        # Create a text grob for the description of the list_box
+        tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
+        
+        # Calculate the p-values of the Wilcoxon Rank sum test 
+        pvalues2 <- pvalues_function2(dist_plot_1,reference_clusters,"DiBaAn-",page)
+        
+        # gtable of the p-values
+        pvaltable <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",pvalues2,setDT="NO",size=9)
+        
+        # Choose the selected type of plot
+        if (plot_type == "Boxplots") {plot <-list_box } else if (plot_type == "Point plots") {plot <-list_point } else {plot <-list_violin}
+        
+        # Arrange in the grid the above elements
+        grid.arrange(arrangeGrob( plot,pvaltable,nrow = 1,ncol=2,widths = c(1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
+        
+        # Print the plot in png format
+        png_plot(paste0("DiBaAn-page ",page," ",plot_type,".png"),plot)
+        
+        
+        ############# Pages (individual cluster analysis) ############
+        
+        # Create the boxplots of every reference cluster
+        for (cluster in 1:reference_clusters){
+          # Subset the samples 
+          report_plot <- plot_df_a[dist_plot_1[,3] == cluster,]
+          # Name the rows
+          rownames(report_plot) <- rownames(dist_plot_1[dist_plot_1[,3] == cluster,])
+          # Convert label column into factor
+          report_plot$label <- factor(report_plot$label,levels = unique(report_plot$label))
+          
+          # Store the colours that will be used in the plot
+          color <- colour_matrix[levels(factor(report_plot[,1],levels = unique(report_plot[,1]))),2]
+          
+          # Save the boxplot object in the list
+          my_name <- "Closest Reference Cluster"
+          boxplot_list[[cluster]] <- list()
+          boxplot_list[[cluster]] <- my_boxplot(my_name,report_plot,label,abundance,color)
+          
+          pointplot_list[[cluster]] <- list()
+          pointplot_list[[cluster]] <- my_point_boxplot(my_name,report_plot,label,abundance,color)
+          
+          violinplot_list[[cluster]] <- list()
+          violinplot_list[[cluster]] <- my_violinplot(my_name,report_plot,label,abundance,color)
+        }
+        
+        for (cluster in 1:reference_clusters) {
+          
+          # Index indicating the page of the report
+          page <- page+1
+          
+          
+          if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])) == 1) {
+            pvaluesb <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
+            colnames(pvaluesb) <- c("","")
+            rownames(pvaluesb) <- c("")
           } else {
             # Available combination for the pairwise comparisons
-            combinations <- combs(levels(as.factor(dist_plot_4[dist_plot_4$cluster == cluster,1])), 2)
-            
+            combinations <- combs(levels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])), 2)
             
             # Vector containing the p-values
             pvaluesb <- c()
             
             # Calculate the PERMANOVA p-values
             for (g in 1:nrow(combinations)){ 
-              # Choose the groups for the pairwise comparison
-              groups <- rownames(plot_matrix[plot_matrix[,1] %in% combinations[g,],])
+              # Choose the groups for the pairwise comparisons
+              groups <- rownames(plot_matrix[plot_matrix[,ncol(plot_matrix)] %in% combinations[g,],])
               # Calculate pairwise PERMANOVA p-values
-              adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),1])[[1]][6][[1]][1]
+              adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),ncol(plot_matrix)])[[1]][6][[1]][1]
               # Form the matrix with the p-values
               pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
             }
@@ -4178,167 +3866,169 @@ if (ncol(taxonomy)!=0) {
             colnames(pvaluesb) <- c("Groups","p-value","Adj. p-value")
           }
           
-          if (nlevels(as.factor(dist_plot_4[dist_plot_4$cluster==cluster,1])) != 1){
+          if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])) != 1){
             # Convert p-values column into numeric
             pvaluesb[,2] <- as.numeric(pvaluesb[,2])
             # Order the p-values
             pvaluesb <- pvaluesb[order(pvaluesb[,2]),]
-            
             # Choose the first 10 most significant p-values
-            if (nrow(pvaluesb) > 10){ pvaluesb2 <- pvaluesb[1:10,]} else {pvaluesb2 <- pvaluesb}
-          } else { 
-            pvaluesb2 <- pvaluesb
-            }
-          
-          # Create a gtable containing text grobs 
-          pvaluetable <- gtableGrob("PEMANOVA test - pairwise",pvaluesb2,setDT="NO",size=9)
-          
-          temporary <- rownames(median_matrix[which(median_matrix[,ncol(median_matrix)]==cluster),])
-          paste2 <- paste0("According to the median distances from the reference ",central_point, ".\n", paste(paste(temporary,collapse=",")))
-          
-          
-          
-          # Set the layout of the cover page (3 rows, 1 column)
-          layout(matrix(c(1, 1, 1,
-                          2, 2, 2,
-                          3, 3, 3), nrow=3, byrow=TRUE),heights=c(1.1,3,0.3) )
-          
-          
-          # Create an empty plot
-          plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-          # Title of the page
-          title(main=paste("Reference Cluster",cluster),cex.main = 2)
-          
-          if (length(temporary) == 0){
-            text(x = 0.5, y = 0.3, paste("None of the test groups are closer to Reference cluster ",cluster,"."),cex = 1.5, col = "black",font = 3)
-          } else if (length(temporary)==1){
-            text(x = 0.5, y = 0.3, paste0(paste2," is closer to Reference cluster ", cluster,"."),cex = 1.5, col = "black",font = 3)
+            if (nrow(pvaluesb)>10){ pvaluesb2 <- pvaluesb[1:10,] } else { pvaluesb2 <- pvaluesb }
           } else {
-            text(x = 0.5, y = 0.3, paste0(paste2," are closer to Reference cluster ", cluster,"."),cex = 1.5, col = "black",font = 3)
+            pvaluesb2 <- pvaluesb
           }
           
-          
-          # MDS presenting the every reference cluster with the closest test clusters
-          sclass(unifract_dist[rownames(dist_plot_4[dist_plot_4$cluster==cluster,]),rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])])),
-                 NULL,colour_matrix[levels(factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))),2])
+          # Create a gtable containing text grobs 
+          pvaluetable <- gtableGrob("PERMANOVA test - pairwise",pvaluesb2,setDT="NO",size=9)
           
           
-          # Print the MDS plot in png format
-          png_plot(paste0("DeNoAn-page ",page," MDS Plot.png"),
-                   sclass(unifract_dist[rownames(dist_plot_4[dist_plot_4$cluster==cluster,]),rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])])),
-                          NULL,colour_matrix[levels(factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))),2]))
-          
-          # Change the margins in order to be created blank space at the end of the page
-          par(mar = c(0.1, 0.1, 0.1, 0.1))
-          
-          # Create an empty plot
-          plot.new()
-          
-          # Defaults margins
+          # Default margins
           par(mar= c(5.1, 4.1, 4.1, 2.1))
           
-          # Index indicating the page of the report
-          page <- page+1
           
-          # tree plot presenting the samples of each reference clusters and the samples of their closest test clusters
-          tree_plot <- tree(unifract_dist[rownames(dist_plot_4[dist_plot_4$cluster==cluster,]),rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))
-                            ,colour_matrix[levels(factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))),2])
-          
-          # Title of the cladogram
-          text3 <- paste("Phylogram")
-          
-          # Create a text grob for the cladogram
-          tgrob3 <- text_grob(text3, face = "bold", color = "Black")
-          
-          # Choose the selected type of plot
-          if (plot_type == "Boxplots") {plot <-boxplot_list[[cluster]] } else if (plot_type == "Point plots") {plot <- pointplot_list[[cluster]] } else {plot <-violinplot_list[[cluster]]}
-          
-          
-          # Arrange in the grid the above elements
-          grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.5,0.2,1))
-          
-          # Write the PERMANOVA p-values
-          write_table(paste0("DeNoAn-page ",page, " PERMANOVA pvalues.tab"),pvaluesb,"pvalues")
-          
-          # Print the Phylogram in png format
-          png_plot(paste0("DeNoAn-page ",page,"Phylogram.png"),tree_plot)
-          
-          # Print theplot in png format
-          png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
-          
+          if (length(which(plot_matrix$Nearest.reference.cluster == cluster)) > 2){
+            if (length(Test_name) <= 2){
+              # Set the layout of the cover page (3 rows, 1 column)
+              layout(matrix(c(1, 1, 1,
+                              2, 2, 2,
+                              3, 3, 3), nrow=3, byrow=TRUE),heights=c(1,3,0.3) )
+            } else {
+              # Set the layout of the cover page (3 rows, 1 column)
+              layout(matrix(c(1, 1, 1,
+                              2, 2, 2,
+                              3, 3, 3), nrow=3, byrow=TRUE),heights=c(1.5,3,0.3) )
+            }  
+            
+            
+            # Create an empty plot
+            plot.new()
+            # Title of the page
+            title(main=paste("Reference Cluster",cluster),cex.main = 1.7,font.main = 2)
+            
+            
+            # Text that will we used as description for every reference cluster
+            text <- c()
+            
+            if (length(Test_name)<5){
+              
+              for (group in 1:length((Test_name))) { 
+                # Subset the samples of each test group
+                temporary <- plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]
+                # Write how many samples of each test group is closer to every reference cluster
+                paste2 <- paste(nrow(temporary[temporary$Nearest.reference.cluster == cluster,]),"of the", nrow(plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]),
+                                "samples of the", levels[group], " group are closer to the reference cluster",cluster,"\n")
+                # Final text
+                text <- paste(text,paste2)
+              }
+            } else {
+              text <- paste("The next MDS plot presents the closest samples of each group to the reference cluster",cluster)
+            }
+            
+            # Information about the number of the test samples that are closer to each reference cluster
+            text(x=0.5, y = 0.25, text,  cex = 1.3, col = "black",font=3)
+            
+            
+            # MDS plot with the reference cluster and the test sample that are closer to it
+            sclass(unifract_dist[plot_matrix$Nearest.reference.cluster == cluster,plot_matrix$Nearest.reference.cluster == cluster],factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])),
+                   NULL, colour_matrix[levels(factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)]))),2])
+            
+            # Change the margins in order to be created blank space at the end of the page
+            par(mar = c(0.1, 0.1, 0.1, 0.1))
+            
+            # Create an empty plot
+            plot.new()
+            
+            
+            # Print the MDS plot in png format
+            png_plot(paste0("DiBaAn-page ",page, " MDS plot.png"),sclass(unifract_dist[plot_matrix$Nearest.reference.cluster==cluster,plot_matrix$Nearest.reference.cluster==cluster],factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])),
+                                                                         NULL, colour_matrix[levels(factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)]))),2]))
+            
+            
+            # Default margins
+            par(mar= c(5.1, 4.1, 4.1, 2.1))
+            
+            
+            # Index indicating the page of the report
+            page <- page+1
+            
+            
+            # tree with the samples of the reference cluster and the test samples that are closer to it
+            tree_plot <- tree(unifract_dist[plot_matrix$Nearest.reference.cluster == cluster,plot_matrix$Nearest.reference.cluster==cluster],factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])),
+                              colour_matrix[levels(factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)],levels = unique(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)]))),2])
+            
+            # Title of the plot
+            text3 <- paste("Phylogram")
+            # Create a text grob for the title
+            tgrob3 <- text_grob(text3, face = "bold", color = "Black")
+            
+            # Choose the selected type of plot
+            if (plot_type == "Boxplots") {plot <-boxplot_list[[cluster]] } else if (plot_type == "Point plots") {plot <- pointplot_list[[cluster]] } else {plot <-violinplot_list[[cluster]]}
+            
+            
+            # Grid arrange all the above elements
+            grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.55,0.1,1))
+            
+            # Write the PERMANOVA p-values
+            write_table(paste0("DiBaAn-page ",page," PERMANOVA pvalues.tab"),pvaluesb,"pvalues")
+            
+            # Print the Phylogram  in png format
+            png_plot(paste0("DiBaAn-page ",page," Phylogram.png"),tree_plot)
+            
+            # Print the plot in png format
+            png_plot(paste0("DiBaAn-page ",page," ",plot_type,".png"),plot)
+            
+          } 
         }
+        
+        
+        dev.off()
+        
       }
       
-      dev.off()
-      
-    } else if (index == 1 & all(Test_name == "None")) {
-      
-      # Report in case there are no test groups
-      
       #################################################
-      ########## Cluster Analysis report ##############
+      ########## De novo-based report #################
       #################################################
       
-      
-      # Set working directory
-      setwd(outputs_path)
-      
-      # Open the PDF
-      pdf("Cluster Analysis.pdf")
-      
-      
-      ########### Cover Page ##########
-      
-      # Index indicating the page of the report
-      page <- 1
-      
-      # Set the layout of the cover page
-      layout( matrix(c(1,1), ncol=1) )
-      # Default margins
-      par(mar= c(5.1, 4.1, 8, 2.1))
-      
-      # Create an empty plot
-      plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      # Title of the plot
-      title(main=paste0("Cluster Analysis \n ClAn-",central_point),cex.main = 1.8,font.main = 2)
-      # Description of this PDF
-      text(x = 0.5, y = 0.5, paste("This report contains results about the Reference group\n",
-                                   "* All the elements of this report(plots and tables) will be found in the \n results folder with the prefix ClAn-"),cex = 1.3, col = "black",font = 3)
-      
-      # Default margins
-      par(mar= c(5.1, 4.1, 4.1, 2.1))
-      
-      
-      ############# Page 2 ############
-      
-      # Index indicating the page of the report
-      page <- page+1
-      
-      # Title of the 2nd page
-      text <- "Cladogram"
-      # Create a text grob for the title
-      tgrob1 <- text_grob(text, face = "bold.italic", color = "Black",size=16)
-      
-      # Description of the cladogram
-      text2 <- paste0("Cladogram of the reference (",paste(reference_name,collapse="+"),") samples")
-      # Create a text grob for the Description
-      tgrob2 <- text_grob(text2, face = "italic", color = "Black",size=12)
-      
-      # Create a vector with the colours of the reference groups
-      col <- brewer.pal(n = nlevels(factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column]))) , name = "Set1")[1:nlevels(factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column])))]
-      
-      # Tree of the reference end test groups
-      tree_plot <- tree(unifract_dist,factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column])), col )
-      
-      # Arrange in the grid the above elements
-      grid.arrange(tgrob1,tgrob2,tree_plot,nrow = 3,heights=c(0.5,0.5,2.5))
-      
-      # Print the Phylogram in png format
-      png_plot(paste0("ClAn-page ",page,"Phylogram.png"),tree_plot)
-      
-      ############# Page 3 ############
-      
-      if (reference_clusters > 1) {
+      if (index == 0 & any(Test_name != "None")) {
+        
+        # Create the lists where the plots will be saved
+        boxplot_list <- list()
+        pointplot_list <- list()
+        violinplot_list <- list()
+        
+        
+        # Open the PDF
+        pdf("2.De novo clustering report.pdf")
+        
+        
+        
+        ########### Cover Page ##########
+        
+        # Index indicating the page of the report
+        page <- 1
+        
+        
+        # Set the layout of the cover page
+        layout( matrix(c(1,1), ncol=1) )
+        # Default margins
+        par(mar= c(5.1, 4.1, 8, 2.1))
+        
+        # Create an empty plot
+        plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+        # Title of the plot
+        title(main=paste0("De novo clustering Analysis\n","(DeNoAn-",central_point,")"),cex.main = 1.8,font.main = 2)
+        # Description of this PDF
+        text(x = 0.5, y = 0.5, paste("This report includes results derived from the analysis that is based \n",
+                                     "on the de novo clustering of both the reference and test samples\n",
+                                     "Both the Reference and test samples were clustered into distinct\n groups* ",
+                                     "based on the results of the PAM algorithm.\n\n",
+                                     "All the elements of this report (plots and tables) will be found in the \n results folder with the prefix DeNoAn-\n\n\n\n\n\n\n\n",
+                                     "* If the program automatically calculated the optimal number of clusters,\n the plots of the Calinski-Harabasz index\n will be fount in the plots folder.")
+             ,cex = 1.1, col = "black",font = 3)
+        # Default margins
+        par(mar= c(5.1, 4.1, 4.1, 2.1))
+        
+        
+        ############## Page 2 ##########
         
         # Index indicating the page of the report
         page <- page+1
@@ -4346,25 +4036,60 @@ if (ncol(taxonomy)!=0) {
         
         # Information about the refernce clusters
         clustering_text <- paste0("The reference dataset (",paste(reference_name,collapse="+"),") was clustered into ", reference_clusters ," groups:\n")
+        # Vector where the propabilities will be placed
         propability <- c()
+        # Vector where the number of samples will be placed
         number_samples <- c()
+        
         for (i in 1:reference_clusters){
-          clustering_text <- paste(clustering_text,paste(reference_name,collapse="+") ,i, "has", length(which(clusters==paste(paste(reference_name,collapse="+"),i))),"samples.\n")
+          clustering_text <- paste(clustering_text,paste(reference_name,collapse="+") ,i, "has", length(which(denovo_clusters==paste(paste(reference_name,collapse="+"),i))),"samples.\n")
           if (reference_clusters > 1) {
-            number_samples <- c(number_samples,length(which(clusters==paste(paste(reference_name,collapse="+"),i))))
-            propability <- c(propability,1/reference_clusters)}
+            number_samples <- c(number_samples,length(which(denovo_clusters==paste(paste(reference_name,collapse="+"),i))))
+            propability <- c(propability,1/reference_clusters)
+          }
         }
         
-        clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*\n")
+        if (reference_clusters > 1) {
+          
+          # Calculate the Chi-square p-values
+          clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*\n")
+        }
         
+        # Information about the de novo clustering of test groups
+        for (i in 1:length(levels)) {
+          clustering_text <- paste(clustering_text,"\n", "The",levels[i] ,"group was clustered into",test_clusters[i],"groups:\n" )
+          # Vector where the probabilities will be placed
+          propability <- c()
+          # Vector where the number of samples will be placed
+          number_samples <- c()
+          
+          for (j in 1:test_clusters[i]) {
+            clustering_text <- paste(clustering_text,levels[i],j,"has", length(which(denovo_clusters==paste(levels[i],j))),"samples.\n")
+            if (test_clusters[i] > 1) {
+              number_samples <- c(number_samples,length(which(denovo_clusters==paste(levels[i],j))))
+              propability <- c(propability,1/test_clusters[i])
+            }
+          }
+          
+          if (test_clusters[i] > 1) {
+            
+            # Calculate the Chi-square p-values
+            clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*\n")
+          }
+        }
         
-        # Create a text grob for the clustering
-        tgrob <- text_grob(clustering_text, face = "italic", color = "Black",size=13)
+        if (length(Test_name) <= 2){
+          # Create a text grob for the clustering
+          tgrob <- text_grob(clustering_text, face = "italic", color = "Black",size=13)
+        } else {
+          # Create a text grob for the clustering
+          tgrob <- text_grob(clustering_text, face = "italic", color = "Black",size=9)
+        }
         
         # Create a text grob for the ttle of the page
-        tgrob2 <- text_grob("De novo clustering of the reference group",face = "bold.italic", color = "Black",size=15)
+        tgrob2 <- text_grob("De novo clustering of the reference and \n test groups",face = "bold.italic", color = "Black",size=15)
         
-        text <-  "* The Chi square (Goodness of fit) test checks if there is discrepancy betwwen the observed number of observations \n of each cluster and the number of observation if the samples were uniformly distributed "
+        text <-  "* The Chi square (Goodness of fit) test checks if there is discrepancy between the observed number of observations \n of each cluster and the number of observation in case the samples were distributed uniformly."
         
         # Create a text grob for the clustering
         tgrob3 <- text_grob(text, face = "italic", color = "Black",size=9)
@@ -4373,10 +4098,12 @@ if (ncol(taxonomy)!=0) {
         grid.arrange(tgrob2,tgrob,tgrob3,nrow=3,heights=c(0.5,3,0.5))
         
         
-        ############# Page 4 ############
+        ############ Page 3 #############
         
         # Index indicating the page of the report
         page <- page+1
+        
+        
         
         # Set the layout of the cover page (3 rows, 1 column)
         layout(matrix(c(1, 1, 1,
@@ -4389,11 +4116,12 @@ if (ncol(taxonomy)!=0) {
         title(main="MDS Plot",cex.main = 1.8,font.main = 2)
         
         # Description of the MDS plot
-        text(x=0.5, y = 0.30, "MDS plot presenting the reference clusters.", cex = 1.5, col = "black")
+        text(x=0.5, y = 0.30, paste0("MDS plot presenting the groups which have formed from the de novo clustering of  \n the ", 
+                                     "reference (", paste(reference_name,collapse="+"), ") and the test samples (", paste(Test_name,collapse="+"), ") \n"), cex = 1.5, col = "black")
         
-        # MDS plot presenting the reference clusters
-        sclass(unifract_dist[input_table[,1] %in% reference_name,input_table[,1]%in%reference_name],factor(mapping_cluster[which(input_table[,1] %in% reference_name)], levels=unique(mapping_cluster[which(input_table[,1] %in% reference_name)])),
-               NULL, colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2])
+        # MDS plot presenting the clusters of the de novo clustering of both the reference and test groups
+        sclass(unifract_dist,factor(denovo_clusters,levels=unique(denovo_clusters)),
+               NULL,colour_matrix[levels(factor(denovo_clusters,levels=unique(denovo_clusters))),2])
         
         
         # Change the margins in order to be created blank space at the end of the page
@@ -4404,76 +4132,942 @@ if (ncol(taxonomy)!=0) {
         # Default margins
         par(mar= c(5.1, 4.1, 4.1, 2.1))
         
-        # Print the MDS Plot in png format
-        png_plot(paste0("ClAn-page ",page," MDS Plot.png"),
-                 sclass(unifract_dist[input_table[,1] %in% reference_name,input_table[,1]%in%reference_name],factor(mapping_cluster[which(input_table[,1] %in% reference_name)], levels=unique(mapping_cluster[which(input_table[,1] %in% reference_name)])),
-                        NULL, colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2]))
+        # Print the MDS plot in png format
+        png_plot(paste0("DeNoAn-page ",page, " MDS Plot.png"),sclass(unifract_dist,factor(denovo_clusters,levels=unique(denovo_clusters)),
+                                                                     NULL,colour_matrix[levels(factor(denovo_clusters,levels=unique(denovo_clusters))),2]))
         
         
-        ############# Page 5 ############
+        
+        ############### Page 4 ##########
         
         # Index indicating the page of the report
         page <- page+1
         
-        # Tile of the 4th page
-        text1 <- "Cluster Percentages"
+        
+        # Title of the 4th page 
+        text1 <- "Descriptive Statistics"
         
         # Create a text grob for the title
         tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
         
+        
         # Arrange in the grid the above elements
-        grid.arrange(tgrob,gtableGrob("Clusters",Chi_square_matrix,setDT="YES",size=12), barplot, ncol = 1, nrow = 3,heights=c(0.4,1.2,1.5))
+        grid.arrange(tgrob,reference_statistis_table,statistic_table_test_clusters,nrow=3,heights=c(0.4,1.3,1.6))
+        
+        
+        
+        ############### Page 5-(undefined) ##########
+        
+        if (chi_square == 1 & denovo_chi_square == 1){
+          
+          # Index indicating the page of the report
+          page <- page+1
+          
+          # Tile of the page
+          text1 <- paste("Statistical Analysis* of the \n", paste(exploratory_columns,collapse=","),"columns.")
+          
+          # Create a text grob for the title
+          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+          
+          #Add text to the page
+          text2 <- paste("*Chi square test-Goodness of fit will be applied to the categorical variables.\n",
+                         "Wilcoxon Rank Sum test will be applied to the numerical variables.")
+          
+          # Create a text grob for the footnote
+          tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=14)
+          
+          # Text of the footnote
+          text3 <- paste("For the next",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1),"pages")
+          
+          # Create a text grob for the footnote
+          tgrob3 <- text_grob(text3,face = "italic", color = "Black",size=12)
+          
+          # Arrange in the grid the above elements
+          grid.arrange(tgrob,tgrob2,tgrob3, nrow=3,heights=c(2,1,0.5))
+          
+          
+          #------------------------------------------- Chi-Square Analysis ---------------------------------------#
+          
+          
+          #-------Perform Statistical analysis for the categorical variables------------#
+          
+          for (k in 1:length(exploratory_columns)){
+            
+            # Index indicating the page of the report
+            page <- page+1
+            
+            # If a column has less than 3 unique elements will be converted in factor
+            if (is.numeric(meta_file[,exploratory_columns[k]])==TRUE & length(unique(meta_file[,exploratory_columns[k]])) < 4) {
+              meta_file[,exploratory_columns[k]] <- as.factor(meta_file[,exploratory_columns[k]])
+            }
+            
+            # Check if the column is character of factor
+            if (is.character(meta_file[,exploratory_columns[k]]) == TRUE | is.factor(meta_file[,exploratory_columns[k]]) == TRUE ){
+              
+              # Tile of the page
+              text1 <- paste0("'",exploratory_columns[k],"' Column")
+              
+              # Create a text grob for the title
+              tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+              
+              # Main text of the page
+              text2 <- paste0("The distribution of the samples across the clusters of the test group(s)\n is presented in Table 1.\n
+                 Table 2 presents the p-values of the Chi-square test of the observed distribution \nof the counts across the clusters in comparison with the expected \ndistribution if the counts were uniformly distributed.\n
+                 Table 3 contains the p-values of the pairwise comparisons.\n
+                 The tables contain only the 10 most significant p-values. The rest of the p-values\nhave been printed in the results folder."
+              )
+              
+              # Create a text grob for the text
+              tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+              
+              # Create a text grob for the footnote
+              text3 <- "*If the number of counts is limited or zero counts occurs, then the Chi-square approximation \n may be incorrect."  
+              
+              # Create a text grob for the footnote
+              tgrob3 <- text_grob(text3,face = "italic", color = "Black",size=11)
+              
+              # Arrange in the grid the above elements
+              grid.arrange(tgrob,tgrob2,tgrob3 ,nrow=3)
+              
+              # Calculate the chi-square p-values for every test group
+              for (i in 1:length(Test_name)){
+                
+                if (test_clusters[i] > 1) {
+                  
+                  # Index indicating the page of the report
+                  page <- page+1
+                  
+                  # Subset only the names of the test Samples 
+                  test_names <- rownames(input_table[input_table[,1]==Test_name[i],])
+                  # Extract the factors of the column
+                  factors <- factor(meta_file[test_names,exploratory_columns[k]],levels=unique(meta_file[test_names,exploratory_columns[k]]))
+                  
+                  if (nlevels(factors) > 0){
+                    # Form the matrix where the counts of the observations will be placed
+                    chi_matrix <- data.frame(matrix(ncol = (nlevels(factors)) , nrow = test_clusters[i]))
+                    # Naming the rows of p_value data frame
+                    rownames(chi_matrix) <- paste(Test_name[i],1:test_clusters[i])
+                    # Naming the columns of p_value data frame
+                    colnames(chi_matrix) <- levels(factors)
+                    
+                    
+                    for (ii in 1:test_clusters[i]){
+                      # Subset only the names of the test Samples for every cluster
+                      names2 <- rownames(mapping_file[mapping_file[,1]==paste(Test_name[i],ii),])
+                      for (iii in 1:nlevels(factors)){
+                        # Place the counts in the Chi_matrix
+                        chi_matrix[ii,iii] <- length(which(meta_file[names2,exploratory_columns[k]] == levels(factors)[iii]))
+                      }
+                    }
+                    
+                    # Replace zero counts with 0.01
+                    chi_matrix[chi_matrix==0] <- 0.01
+                    
+                    
+                    # Performing Chi-square test(Goodness of fit) for each column
+                    exp_col <- round(apply(chi_matrix,2,function(x) chisq.test(x)$p.value),4)
+                    
+                    if (ncol(chi_matrix) > 1){
+                      # Performing Chi-square test(Goodness of fit) for each row
+                      exp <-apply(chi_matrix,2,sum)/test_clusters[i] 
+                      exp_r <- round(apply(chi_matrix,1,function(x) chisq.test(x,p=exp,rescale.p = TRUE)$p.value),4)
+                      
+                      
+                      # Performing fdr correction
+                      adjustb <- round(p.adjust(c(exp_col,exp_r), method = "BH"),4)
+                      # Add the adjusted p-values in the expected matrix
+                      expected <- data.frame(cbind(c(exp_col,exp_r),adjustb))
+                      # Naming the columns of p_value data frame
+                      colnames(expected) <- c( "P-values","Adj p-values")
+                      # Naming the rows of p_value data frame
+                      rownames(expected) <- c(names(exp_col),names(exp_r))
+                    } else {
+                      # Performing fdr correction
+                      adjustb <- round(p.adjust(exp_col, method = "BH"),4)
+                      # Add the adjusted p-values in the expected matrix
+                      expected <- data.frame(cbind(exp_col,adjustb))
+                      # Naming the columns of p_value data frame
+                      colnames(expected) <- c( "P-values","Adj p-values")
+                      # Naming the rows of p_value data frame
+                      rownames(expected) <- c(names(exp_col))
+                    }
+                    
+                    
+                    # Order the p-values
+                    expected <- expected[order(expected[,2]),]
+                    # Choose the first 10 most significant p-values
+                    if (nrow(expected) > 10){expected2 <- expected[1:10,]} else { expected2 <- expected }
+                    
+                    if (ncol(chi_matrix) > 1) {
+                      # Find all the available pairwise combinations
+                      combs <- combs(levels(factors), 2)
+                      # Save the names of that combinations
+                      group_names <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+                      
+                      
+                      # chi_p_value -> a vector where the p values will be stored
+                      chi_p_value <- c(); test <- c()
+                      for (chi in 1:nrow(combs)) { 
+                        # Performed the Chi square test
+                        chi_p_value[chi] <- round(chisq.test(chi_matrix[,combs[chi,2]],p=chi_matrix[,combs[chi,1]],rescale.p = TRUE)$p.value,4)
+                      }
+                      
+                      
+                      #--- Rows pairwise comparisons ----#  
+                      # Find all the available pairwise combinations
+                      combs <- combs(rownames(chi_matrix), 2)
+                      # Save the names of that combinations
+                      group_names_rows <- apply(combs,1,function(x)paste0(x[1],"-",x[2]))
+                      
+                      
+                      # chi_p_value -> a vector where the p values will be stored
+                      chi_p_value_rows <- c(); test <- c()
+                      for (chi in 1:nrow(combs)) { 
+                        # Performed the Chi square test
+                        chi_p_value_rows[chi] <- round(chisq.test(as.numeric(chi_matrix[combs[chi,2],]),p=as.numeric(chi_matrix[combs[chi,1],]),rescale.p = TRUE)$p.value,4)
+                      }
+                      
+                      
+                      # Replace 0.01 with 0
+                      chi_matrix[chi_matrix == 0.01] <- 0
+                      
+                      # Forming the data frame containing the p values
+                      p_value <- data.frame(group_names)
+                      # Place the p-values
+                      p_value[,2] <- chi_p_value
+                      # Naming the columns of p_value data frame
+                      colnames(p_value) <- c("Groups","p value")
+                      
+                      # Forming the data frame containing the p values
+                      p_value_rows <- data.frame(group_names_rows)
+                      # Naming the rows of the p_value data frame
+                      p_value_rows[,2] <- chi_p_value_rows
+                      # Naming the columns of p_value data frame
+                      colnames(p_value_rows) <- c("Groups","p value")
+                      
+                      # rbind all the p-values
+                      p_value <- rbind(p_value,p_value_rows)
+                      
+                      # Convert p-values column into numeric
+                      p_value[,2] <- as.numeric(p_value[,2])
+                      # Performing fdr correction
+                      p.adjust <- round(p.adjust(p_value[,2], method = "BH"),4)
+                      # Add the adjusted p-values in the pvalues matrix
+                      p_value[,3] <- p.adjust
+                      # Naming the columns of p_value data frame
+                      colnames(p_value) <- c("Groups","p value","Adj p-values")
+                      # Order the p-values
+                      p_value <- p_value[order(p_value[,3]),]
+                      # Choose the first 10 most significant p-values
+                      if (nrow(p_value) > 10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
+                      
+                    } else {
+                      
+                      #--- Rows pairwise comparisons ----#  
+                      
+                      
+                      # Replace 0.01 with 0
+                      chi_matrix[chi_matrix == 0.01] <- 0
+                      
+                      
+                      # Create the dataframe when there is only one column
+                      p_value <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
+                      colnames(p_value) <- c("","")
+                      rownames(p_value) <- c("")
+                      p_value2 <- p_value
+                      
+                    }
+                    
+                    # Print the counts table in the results folder
+                    write_table(paste0("DeNoAn-page ",page, " Counts per cluster (Table 1).tab"),chi_matrix,"table")
+                    # Print the Expected-observed p-values table in the results folder
+                    write_table(paste0("DeNoAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                    # Print the pairwise p-values table in the results folder
+                    write_table(paste0("DeNoAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                    
+                    if (sum(nchar(colnames(chi_matrix))) < 62){
+                      
+                      # Tile of the page
+                      text1 <- paste(exploratory_columns[k],"-",Test_name[i])
+                      
+                      # Create a text grob for the title
+                      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                      
+                      # Tile of the p-value tables
+                      text2 <- "P-values of the Chi-square test (Goodness of Fit)"
+                      
+                      # Create a text grob for the title
+                      tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
+                      
+                      # Arrange in the grid the above elements
+                      grid.arrange(tgrob,gtableGrob("Counts per cluster (Table 1)",chi_matrix,setDT="YES",size=12), 
+                                   arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1))
+                                   , nrow = 3,heights=c(0.4,1,2))
+                    } else {
+                      text1 <- paste(exploratory_columns[k],"-",Test_name[i])
+                      
+                      # Create a text grob for the title
+                      tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+                      
+                      # Tile of the p-value tables
+                      text2 <- "The tables are too big to be printed!!\nYou can find them in .tab format in the results folder."
+                      
+                      # Create a text grob for the title
+                      tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
+                      
+                      grid.arrange(tgrob,tgrob2,nrow=2)
+                    }
+                    
+                  } else {
+                    # Tile of the page
+                    text1 <- paste0(exploratory_columns[k],"-", Test_name[i])
+                    
+                    # Create a text grob for the title
+                    tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+                    
+                    # Main text of the page
+                    text2 <- paste0("It was not possible to perform the chi-square test for the '",Test_name[i],"'.\n There were no factors!")
+                    
+                    # Create a text grob for the text
+                    tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+                    
+                    # Arrange in the grid the above elements
+                    grid.arrange(tgrob,tgrob2 ,nrow=2)
+                  }
+                } else {
+                  # Tile of the page
+                  text1 <- paste0(exploratory_columns[k],"-", Test_name[i])
+                  
+                  # Create a text grob for the title
+                  tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+                  
+                  # Main text of the page
+                  text2 <- paste0("It was not possible to perform the chi-square test for the '",Test_name[i],"' group.\n There is only one cluster!")
+                  
+                  # Create a text grob for the text
+                  tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+                  
+                  
+                  # Arrange in the grid the above elements
+                  grid.arrange(tgrob,tgrob2 ,nrow=2)
+                }
+              }
+            }
+          }
+          
+          
+          #-------Perform Statistical analysis for the numerical variables------------#
+          
+          for (k in 1:length(exploratory_columns)){
+            
+            
+            # Check if the column is character of factor
+            if (is.numeric(meta_file[,exploratory_columns[k]])==TRUE ){
+              
+              # Index indicating the page of the report
+              page <- page+1
+              
+              # Tile of the page
+              text1 <- paste0("'",exploratory_columns[k],"' Column")
+              
+              # Create a text grob for the title
+              tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+              
+              # Main text of the page
+              text <- paste0("The relationship between the the test groups, and the  \n'",exploratory_columns[k],"' column will be examined in the following page.\n\n",
+                             "The distribution of the values of the '",exploratory_columns[k],"' column across \n the test clusters is presented in the form of ",plot_type, ".\n\n",
+                             "The p-values of the pairwise Wilcoxon Rank Sum tests are presented in \n the following table.\n\n",
+                             "The table contains only the 10 most significant p-values. The rest of the p-values \nhave been printed in the results folder.")
+              
+              # Create a text grob for the text
+              tgrob2 <- text_grob(text,face = "italic", color = "Black",size=13)
+              
+              # Arrange in the grid the above elements
+              grid.arrange(tgrob,tgrob2,nrow=3)
+              
+              for (i in 1:length(Test_name)){
+                
+                # Index indicating the page of the report
+                page <- page+1
+                
+                # Form the data frame that contains the labels and the values of the exloratory column
+                values_matrix <- data.frame(mapping_file[rownames(input_table[input_table[,1]==Test_name[i],]),1],meta_file[rownames(input_table[input_table[,1]==Test_name[i],]),exploratory_columns[k]])
+                # Convert first column into factor
+                values_matrix[,1] <- as.factor(values_matrix[,1])
+                
+                # Remove NA from the values_matrix
+                for (f in 1:nlevels(values_matrix[,1])){
+                  if (all(is.na(values_matrix[(values_matrix[,1]==levels(values_matrix[,1])[f])==TRUE,2]))) {
+                    values_matrix <- values_matrix[-which((values_matrix[,1]==levels(values_matrix[,1])[f])==TRUE),] 
+                  }
+                }
+                
+                # Check if the values_matrix is empty
+                if (nrow(values_matrix)>0){
+                  
+                  # Convert first column into factor
+                  values_matrix[,1] <- factor(values_matrix[,1],levels = unique(values_matrix[,1]))
+                  
+                  # Add the prevalence of the groups in the values_matrix
+                  values_matrix <- data.frame(values_matrix,label=prevalence(values_matrix,column=2))
+                  
+                  # Convert label column into factor
+                  values_matrix$label <- factor(values_matrix$label,levels = unique(values_matrix$label))
+                  
+                  # Create a new data frame that will be used for the graphs
+                  values_plot_matrix <- cbind.data.frame(Group=as.factor(values_matrix[,1]),abundance = as.numeric(values_matrix[,2]),label = factor(values_matrix[,3]))
+                  
+                  # Store the colours that will be used in the plot
+                  color <- colour_matrix[levels(factor(values_plot_matrix[,1],levels = unique(values_plot_matrix[,1]))),2]
+                  
+                  # Calculate the p values
+                  if (nlevels(values_plot_matrix[,1])>1){
+                    p_values <- pvalues_function(values_plot_matrix,"DeNoAn-",page)
+                  } else {
+                    p_values <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
+                    colnames(p_values) <- c("","")
+                    rownames(p_values) <- c("")
+                  }
+                  
+                  # gtable of the p-values
+                  pvaltable_wil <- gtableGrob("Wilcoxon Rank Sum Test - pairwise",p_values,setDT="NO",size=9)
+                  
+                  # The name that will be used as the title for the plots 
+                  my_name <- paste0(Test_name[i],"-",exploratory_columns[k])
+                  
+                  # Save the boxplot object in the list
+                  list_box_will <- my_boxplot(my_name,values_plot_matrix,label,abundance,color)
+                  
+                  # Save the boxplot with points object in the list
+                  list_point_will <- my_point_boxplot(my_name,values_plot_matrix,label,abundance,color)
+                  
+                  # Save the violin object in the list
+                  list_violin_will <- my_violinplot(my_name,values_plot_matrix,label,abundance,color)
+                  
+                  # Choose the selected type of plot
+                  if (plot_type == "Boxplots") {plot <-list_box_will } else if (plot_type == "Point plots") {plot <-list_point_will } else {plot <-list_violin_will}
+                  
+                  # Arrange in the grid the above elements
+                  grid.arrange(arrangeGrob( plot,pvaltable_wil,nrow = 1,ncol=2,widths = c(1,1)),nrow = 2,as.table = T,heights=c(2.5,1))
+                  # Print the plot in png format
+                  png_plot(paste0("DeNoAn-page ",page," ",paste0(Test_name[i],"-",exploratory_columns[k]),".png"),plot)
+                  
+                  # Print a message if all the values are missing
+                }   else {
+                  
+                  # Tile of the page
+                  text1 <- paste0("'",exploratory_columns[k],"' Column")
+                  
+                  # Create a text grob for the title
+                  tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
+                  
+                  # Main text of the page
+                  text2 <- paste0("It was not possible to perform the Wilcoxon Rank Sum test for the '",exploratory_columns[k],"'.\n All values are missing!! ")
+                  
+                  # Create a text grob for the text
+                  tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=12)
+                  
+                  
+                  # Arrange in the grid the above elements
+                  grid.arrange(tgrob,tgrob2 ,nrow=2)
+                }
+              }
+            }
+          }
+        }
+        
+        
+        ############### Page (self-medoid) ############
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Description of the list_box3
+        text <- paste0(plot_type," displaying the distribution of the distances around their own self-",central_point,".\n",
+                       "The plots can provide information about the compactness of the groups.")
+        
+        
+        # Create a text grob for the Description of the list_box3
+        tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
+        
+        # Choose the selected type of plot
+        if (plot_type == "Boxplots") {plot <-list_box3 } else if (plot_type == "Point plots") {plot <- list_point3 } else {plot <- list_violin3}
+        
+        # Arrange in the grid the above elements
+        grid.arrange(arrangeGrob(plot,pvaltable3,nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
+        
+        
+        # Print the plot in png format
+        png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
+        
+        ############# Page (closest reference cluster) ##########
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        
+        # Title of the 6th page 
+        text1 <- paste("Distances From the Closest Reference",central_point)
+        
+        # Create a text grob for the title
+        tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+        
+        # Description of the observations matrix
+        text2 <- paste0("The closest reference ",central_point, " was found for every sample of the test groups.\n 
+                   The above matrix presents the number of the sample of each test group \n from the closest reference cluster(",central_point,").\n
+                   Based on this information in the next page the ",plot_type," of the \n distances from the nearest reference ",central_point," were formed.")
+        
+        
+        # Create a text grob for the description of the observations matrix
+        tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=13)
+        
+        # Arrange in the grid the above elements
+        grid.arrange(tgrob,observation,tgrob2,nrow=3,heights=c(0.4,1,1.5))
+        
+        
+        
+        ############### Page (Boxplot-closest reference medoid) ###########  
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Description of the list_box5
+        text <- paste0(plot_type," displaying the distribution of the distances \n",
+                       "from their nearest reference ",toupper(central_point),".\n",
+                       "The columns represent the clusters that have been derived \n",
+                       "from the de novo clustering of the reference and tests samples.\n",
+                       "\n",
+                       
+                       "*Only the top-10 most significant p-values are displayed.\n"," The rest of them are at the results folder.")
+        
+        # Create a text grob for the list_box5
+        tgrob <- text_grob(text, face = "italic", color = "Black",size=13)
+        
+        # Choose the selected type of plot
+        if (plot_type == "Boxplots") {plot <-list_box5 } else if (plot_type == "Point plots") {plot <- list_point5 } else {plot <- list_violin5}
+        
+        
+        # Arrange in the grid the above elements
+        grid.arrange(arrangeGrob( plot,pvaltable5,nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
+        
+        # Print the plot in png format
+        png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
+        
+        
+        ############### Page (median distances table) ############
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        # Title of the page 
+        text1 <- "Distances from the closest reference cluster"
+        # Create a text grob for the title
+        tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+        
+        # Description of the matrix of the median distances
+        text2 <- paste("For each group the median distance of the sample from \n every reference",central_point, "was calculated. \n Then, the closest reference cluster was found.\n
+              Based on the information of the above matrix, the",plot_type,"of the distances from \n the closest reference GROUP were formed.\n
+              * More cluster-related results will be found at the results folder.")
+        # Create a text grob for the median matrix
+        tgrob2 <- text_grob(text2,face = "italic", color = "Black",size=13)
+        
+        
+        # Arrange in the grid the above elements
+        grid.arrange(tgrob,median_matrix_table,tgrob2,nrow=3,heights=c(0.4,1,1.5))
+        
+        
+        
+        ############# Page (Boxplots closest reference cluster) ############
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        
+        
+        # Description of the list_box4
+        text <- paste(plot_type,"displaying the distribution of the distances of the test samples \n",
+                      "from their nearest reference cluster.\n",
+                      "\n",
+                      "On the next pages each reference cluster will be examined seperatly.")
+        # Create a text grob for the list_box4
+        tgrob <- text_grob(text, face = "italic", color = "Black",size=13)
+        
+        # Choose the selected type of plot
+        if (plot_type == "Boxplots") {plot <-list_box4 } else if (plot_type == "Point plots") {plot <- list_point4 } else {plot <- list_violin4}
+        
+        
+        # Arrange in the grid the above elements
+        grid.arrange(arrangeGrob(plot,pvaltable4,nrow = 1,ncol=2,widths = c(1.1,1)),tgrob,nrow = 2,as.table = T,heights=c(2.5,1))
+        
+        # Print the plot in png format
+        png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
+        
+        
+        ############ Pages (individual cluster analysis) ###############
+        
+        for (cluster in 1:reference_clusters){
+          
+          # Subset the samples
+          report_plot <- data.frame(plot_df_b[dist_plot_4[,3] == cluster,])
+          # Name the rows
+          rownames(report_plot) <- rownames(dist_plot_4[dist_plot_4[,3]==cluster,])
+          # Convert label column into factor
+          report_plot$label <- factor(report_plot$label,levels = unique(report_plot$label))
+          
+          # Store the colours that will be used in the plot
+          color <- colour_matrix[levels(factor(report_plot[,1],levels = unique(report_plot[,1]))),2]
+          
+          
+          # Save the boxplot object in the list
+          my_name <- "Closest Reference Cluster"
+          boxplot_list[[cluster]] <- list()
+          boxplot_list[[cluster]] <- my_boxplot(my_name,report_plot,label,abundance,color)
+          
+          pointplot_list[[cluster]] <- list()
+          pointplot_list[[cluster]] <- my_point_boxplot(my_name,report_plot,label,abundance,color)
+          
+          violinplot_list[[cluster]] <- list()
+          violinplot_list[[cluster]] <- my_violinplot(my_name,report_plot,label,abundance,color)
+        }
+        
+        for (cluster in 1:reference_clusters) {
+          if (length(rownames(dist_plot_4[dist_plot_4$cluster==cluster,]))>2){
+            
+            # Index indicating the page of the report
+            page <- page+1
+            
+            if (nlevels(as.factor(dist_plot_4[dist_plot_4$cluster==cluster,1])) == 1) {
+              pvaluesb <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
+              colnames(pvaluesb) <- c("","")
+              rownames(pvaluesb) <- c("")
+            } else {
+              # Available combination for the pairwise comparisons
+              combinations <- combs(levels(as.factor(dist_plot_4[dist_plot_4$cluster == cluster,1])), 2)
+              
+              # Vector containing the p-values
+              pvaluesb <- c()
+              
+              # Calculate the PERMANOVA p-values
+              for (g in 1:nrow(combinations)){ 
+                # Choose the groups for the pairwise comparison
+                groups <- rownames(plot_matrix[plot_matrix[,1] %in% combinations[g,],])
+                # Calculate pairwise PERMANOVA p-values
+                adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),1])[[1]][6][[1]][1]
+                # Form the matrix with the p-values
+                pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
+              }
+              
+              # Performing fdr correction
+              p.adjustb <- round(p.adjust(pvaluesb[,2], method = "BH"),4)
+              
+              # Add the adjusted p-values in the pvalues matrix
+              pvaluesb <- data.frame(pvaluesb,p.adjustb)
+              
+              # Name the columns
+              colnames(pvaluesb) <- c("Groups","p-value","Adj. p-value")
+            }
+            
+            if (nlevels(as.factor(dist_plot_4[dist_plot_4$cluster==cluster,1])) != 1){
+              # Convert p-values column into numeric
+              pvaluesb[,2] <- as.numeric(pvaluesb[,2])
+              # Order the p-values
+              pvaluesb <- pvaluesb[order(pvaluesb[,2]),]
+              
+              # Choose the first 10 most significant p-values
+              if (nrow(pvaluesb) > 10){ pvaluesb2 <- pvaluesb[1:10,]} else {pvaluesb2 <- pvaluesb}
+            } else { 
+              pvaluesb2 <- pvaluesb
+            }
+            
+            # Create a gtable containing text grobs 
+            pvaluetable <- gtableGrob("PEMANOVA test - pairwise",pvaluesb2,setDT="NO",size=9)
+            
+            temporary <- rownames(median_matrix[which(median_matrix[,ncol(median_matrix)]==cluster),])
+            paste2 <- paste0("According to the median distances from the reference ",central_point, ".\n", paste(paste(temporary,collapse=",")))
+            
+            
+            
+            # Set the layout of the cover page (3 rows, 1 column)
+            layout(matrix(c(1, 1, 1,
+                            2, 2, 2,
+                            3, 3, 3), nrow=3, byrow=TRUE),heights=c(1.1,3,0.3) )
+            
+            
+            # Create an empty plot
+            plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+            # Title of the page
+            title(main=paste("Reference Cluster",cluster),cex.main = 2)
+            
+            if (length(temporary) == 0){
+              text(x = 0.5, y = 0.3, paste("None of the test groups are closer to Reference cluster ",cluster,"."),cex = 1.5, col = "black",font = 3)
+            } else if (length(temporary)==1){
+              text(x = 0.5, y = 0.3, paste0(paste2," is closer to Reference cluster ", cluster,"."),cex = 1.5, col = "black",font = 3)
+            } else {
+              text(x = 0.5, y = 0.3, paste0(paste2," are closer to Reference cluster ", cluster,"."),cex = 1.5, col = "black",font = 3)
+            }
+            
+            
+            # MDS presenting the every reference cluster with the closest test clusters
+            sclass(unifract_dist[rownames(dist_plot_4[dist_plot_4$cluster==cluster,]),rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])])),
+                   NULL,colour_matrix[levels(factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))),2])
+            
+            
+            # Print the MDS plot in png format
+            png_plot(paste0("DeNoAn-page ",page," MDS Plot.png"),
+                     sclass(unifract_dist[rownames(dist_plot_4[dist_plot_4$cluster==cluster,]),rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])])),
+                            NULL,colour_matrix[levels(factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))),2]))
+            
+            # Change the margins in order to be created blank space at the end of the page
+            par(mar = c(0.1, 0.1, 0.1, 0.1))
+            
+            # Create an empty plot
+            plot.new()
+            
+            # Defaults margins
+            par(mar= c(5.1, 4.1, 4.1, 2.1))
+            
+            # Index indicating the page of the report
+            page <- page+1
+            
+            # tree plot presenting the samples of each reference clusters and the samples of their closest test clusters
+            tree_plot <- tree(unifract_dist[rownames(dist_plot_4[dist_plot_4$cluster==cluster,]),rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))
+                              ,colour_matrix[levels(factor(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])],levels=unique(denovo_clusters[rownames(dist_plot_4[dist_plot_4$cluster==cluster,])]))),2])
+            
+            # Title of the cladogram
+            text3 <- paste("Phylogram")
+            
+            # Create a text grob for the cladogram
+            tgrob3 <- text_grob(text3, face = "bold", color = "Black")
+            
+            # Choose the selected type of plot
+            if (plot_type == "Boxplots") {plot <-boxplot_list[[cluster]] } else if (plot_type == "Point plots") {plot <- pointplot_list[[cluster]] } else {plot <-violinplot_list[[cluster]]}
+            
+            
+            # Arrange in the grid the above elements
+            grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.5,0.2,1))
+            
+            # Write the PERMANOVA p-values
+            write_table(paste0("DeNoAn-page ",page, " PERMANOVA pvalues.tab"),pvaluesb,"pvalues")
+            
+            # Print the Phylogram in png format
+            png_plot(paste0("DeNoAn-page ",page,"Phylogram.png"),tree_plot)
+            
+            # Print theplot in png format
+            png_plot(paste0("DeNoAn-page ",page," ",plot_type,".png"),plot)
+            
+          }
+        }
+        
+        dev.off()
+        
+      } else if (index == 1 & all(Test_name == "None")) {
+        
+        # Report in case there are no test groups
+        
+        #################################################
+        ########## Cluster Analysis report ##############
+        #################################################
+        
+        
+        # Set working directory
+        setwd(outputs_path)
+        
+        # Open the PDF
+        pdf("Cluster Analysis.pdf")
+        
+        
+        ########### Cover Page ##########
+        
+        # Index indicating the page of the report
+        page <- 1
+        
+        # Set the layout of the cover page
+        layout( matrix(c(1,1), ncol=1) )
+        # Default margins
+        par(mar= c(5.1, 4.1, 8, 2.1))
+        
+        # Create an empty plot
+        plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+        # Title of the plot
+        title(main=paste0("Cluster Analysis \n ClAn-",central_point),cex.main = 1.8,font.main = 2)
+        # Description of this PDF
+        text(x = 0.5, y = 0.5, paste("This report contains results about the Reference group\n",
+                                     "* All the elements of this report(plots and tables) will be found in the \n results folder with the prefix ClAn-"),cex = 1.3, col = "black",font = 3)
+        
+        # Default margins
+        par(mar= c(5.1, 4.1, 4.1, 2.1))
+        
+        
+        ############# Page 2 ############
+        
+        # Index indicating the page of the report
+        page <- page+1
+        
+        # Title of the 2nd page
+        text <- "Cladogram"
+        # Create a text grob for the title
+        tgrob1 <- text_grob(text, face = "bold.italic", color = "Black",size=16)
+        
+        # Description of the cladogram
+        text2 <- paste0("Cladogram of the reference (",paste(reference_name,collapse="+"),") samples")
+        # Create a text grob for the Description
+        tgrob2 <- text_grob(text2, face = "italic", color = "Black",size=12)
+        
+        # Create a vector with the colours of the reference groups
+        col <- brewer.pal(n = nlevels(factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column]))) , name = "Set1")[1:nlevels(factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column])))]
+        
+        # Tree of the reference end test groups
+        tree_plot <- tree(unifract_dist,factor(meta_file[,mapping_column],levels = unique(meta_file[,mapping_column])), col )
+        
+        # Arrange in the grid the above elements
+        grid.arrange(tgrob1,tgrob2,tree_plot,nrow = 3,heights=c(0.5,0.5,2.5))
+        
+        # Print the Phylogram in png format
+        png_plot(paste0("ClAn-page ",page,"Phylogram.png"),tree_plot)
+        
+        ############# Page 3 ############
+        
+        if (reference_clusters > 1) {
+          
+          # Index indicating the page of the report
+          page <- page+1
+          
+          
+          # Information about the refernce clusters
+          clustering_text <- paste0("The reference dataset (",paste(reference_name,collapse="+"),") was clustered into ", reference_clusters ," groups:\n")
+          propability <- c()
+          number_samples <- c()
+          for (i in 1:reference_clusters){
+            clustering_text <- paste(clustering_text,paste(reference_name,collapse="+") ,i, "has", length(which(clusters==paste(paste(reference_name,collapse="+"),i))),"samples.\n")
+            if (reference_clusters > 1) {
+              number_samples <- c(number_samples,length(which(clusters==paste(paste(reference_name,collapse="+"),i))))
+              propability <- c(propability,1/reference_clusters)}
+          }
+          
+          clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*\n")
+          
+          
+          # Create a text grob for the clustering
+          tgrob <- text_grob(clustering_text, face = "italic", color = "Black",size=13)
+          
+          # Create a text grob for the ttle of the page
+          tgrob2 <- text_grob("De novo clustering of the reference group",face = "bold.italic", color = "Black",size=15)
+          
+          text <-  "* The Chi square (Goodness of fit) test checks if there is discrepancy betwwen the observed number of observations \n of each cluster and the number of observation if the samples were uniformly distributed "
+          
+          # Create a text grob for the clustering
+          tgrob3 <- text_grob(text, face = "italic", color = "Black",size=9)
+          
+          # Arrange in the grid the above elements
+          grid.arrange(tgrob2,tgrob,tgrob3,nrow=3,heights=c(0.5,3,0.5))
+          
+          
+          ############# Page 4 ############
+          
+          # Index indicating the page of the report
+          page <- page+1
+          
+          # Set the layout of the cover page (3 rows, 1 column)
+          layout(matrix(c(1, 1, 1,
+                          2, 2, 2,
+                          3, 3, 3), nrow=3, byrow=TRUE),heights=c(1,3,0.3) )
+          
+          # Create an empty plot
+          plot.new()
+          # Title of the 3rd page
+          title(main="MDS Plot",cex.main = 1.8,font.main = 2)
+          
+          # Description of the MDS plot
+          text(x=0.5, y = 0.30, "MDS plot presenting the reference clusters.", cex = 1.5, col = "black")
+          
+          # MDS plot presenting the reference clusters
+          sclass(unifract_dist[input_table[,1] %in% reference_name,input_table[,1]%in%reference_name],factor(mapping_cluster[which(input_table[,1] %in% reference_name)], levels=unique(mapping_cluster[which(input_table[,1] %in% reference_name)])),
+                 NULL, colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2])
+          
+          
+          # Change the margins in order to be created blank space at the end of the page
+          par(mar = c(0.1, 0.1, 0.1, 0.1))
+          # Create an empty plot
+          plot.new()
+          
+          # Default margins
+          par(mar= c(5.1, 4.1, 4.1, 2.1))
+          
+          # Print the MDS Plot in png format
+          png_plot(paste0("ClAn-page ",page," MDS Plot.png"),
+                   sclass(unifract_dist[input_table[,1] %in% reference_name,input_table[,1]%in%reference_name],factor(mapping_cluster[which(input_table[,1] %in% reference_name)], levels=unique(mapping_cluster[which(input_table[,1] %in% reference_name)])),
+                          NULL, colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2]))
+          
+          
+          ############# Page 5 ############
+          
+          # Index indicating the page of the report
+          page <- page+1
+          
+          # Tile of the 4th page
+          text1 <- "Cluster Percentages"
+          
+          # Create a text grob for the title
+          tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=15)
+          
+          # Arrange in the grid the above elements
+          grid.arrange(tgrob,gtableGrob("Clusters",Chi_square_matrix,setDT="YES",size=12), barplot, ncol = 1, nrow = 3,heights=c(0.4,1.2,1.5))
+          
+        }
+        
+        dev.off()
         
       }
       
-      dev.off()
+      #---------- Create the Description Analysis file ------------#
       
-    }
-    
-    #---------- Create the Description Analysis file ------------#
-    
-    description_analysis <- data.frame(c(input_otu,normalized,tree_or_matrix,input_tree_or_matrix,input_meta,mapping_column,reference_name,
-                                         reference_clusters,paste(Test_name,collapse=","),paste(test_clusters,collapse=","),paste(exploratory_columns,collapse=",")
-                                         ,central_point,plot_type))
-    # Name the rows of the description_analysis
-    rownames(description_analysis) <- c("OTUs/ASVs table:","Normalized:","Tree or Distances matrix:","Name of tree:","Name of the mapping file:",
-                                        "Column of the mapping file:","Reference group(s):","Number of reference clusters:",
-                                        "Names of the test group(s):","Number of test clusters:", "Exploratory columns:","Central points:","plot type:")
-    # Name the rows of the description_analysis
-    colnames(description_analysis) <- c("")
-    
-    
-    #################################################################################
-    ######################      Write Output tables   ###############################
-    #################################################################################
-    
-    setwd(tables_path)
-    
-    # Write a table that contains all the Medoids' distances 
-    write.table(distances_matrix, "Distances From Cluster Medoids.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
-    
-    # Write a table that contains the ordered distance of all the samples
-    if (any(Test_name != "None")) {
-      write.table(ordered_clusters, "Ordered cluster distances(All Samples).tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
-    }
-    
-    # Return to results path
-    setwd(outputs_path)
-    
-    # Write the new mapping file with the added column
-    write.table(mapping_file, "mapping file.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)  
-    
-    # Write the Description Analysis file
-    write.table(description_analysis, "Description Analysis.tab", sep = "\t",col.names =F, row.names = TRUE,quote = FALSE) 
-    
-    # Return to the original path
-    setwd(OriginalPath)
-    
-    if(!flag) { stop("
+      description_analysis <- data.frame(c(input_otu,normalized,tree_or_matrix,input_tree_or_matrix,input_meta,mapping_column,reference_name,
+                                           reference_clusters,paste(Test_name,collapse=","),paste(test_clusters,collapse=","),paste(exploratory_columns,collapse=",")
+                                           ,central_point,plot_type))
+      # Name the rows of the description_analysis
+      rownames(description_analysis) <- c("OTUs/ASVs table:","Normalized:","Tree or Distances matrix:","Name of tree:","Name of the mapping file:",
+                                          "Column of the mapping file:","Reference group(s):","Number of reference clusters:",
+                                          "Names of the test group(s):","Number of test clusters:", "Exploratory columns:","Central points:","plot type:")
+      # Name the rows of the description_analysis
+      colnames(description_analysis) <- c("")
+      
+      
+      #################################################################################
+      ######################      Write Output tables   ###############################
+      #################################################################################
+      
+      setwd(tables_path)
+      
+      # Write a table that contains all the Medoids' distances 
+      write.table(distances_matrix, "Distances From Cluster Medoids.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
+      
+      # Write a table that contains the ordered distance of all the samples
+      if (any(Test_name != "None")) {
+        write.table(ordered_clusters, "Ordered cluster distances(All Samples).tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
+      }
+      
+      # Return to results path
+      setwd(outputs_path)
+      
+      # Write the new mapping file with the added column
+      write.table(mapping_file, "mapping file.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)  
+      
+      # Write the Description Analysis file
+      write.table(description_analysis, "Description Analysis.tab", sep = "\t",col.names =F, row.names = TRUE,quote = FALSE) 
+      
+      # Return to the original path
+      setwd(OriginalPath)
+      
+      if(!flag) { stop("
         It was not possible to install all required R libraries properly.
                      Please check the installation of all required libraries manually.\n
                      Required libaries:ade4, GUniFrac, phangorn, cluster, fpc,ggplot2,gridExtra,grid,gtable,
                        stats,cowplot,graphics,vegan, dplyr,data.table,tidyr,caTools,RColorBrewer,tools")
+      }
     }
   }
 }
