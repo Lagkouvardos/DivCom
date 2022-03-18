@@ -95,8 +95,6 @@ Reference_name = c("NI")
 Test_name =c("IBD")
 
 
-
-
 #-------------------- Additional parameters ----------------------#
 
 
@@ -111,8 +109,8 @@ label_samples = 0
 label_id =c("")
 
 #' De-Novo Clustering will be performed for the number of samples or maximal for the set limit
-#' Default Limit is 10
-kmers_limit=10
+#' Default Limit is 9
+kmers_limit=9
 
 
 
@@ -130,7 +128,6 @@ ls <- c("meta_file","otu_file","unifract_dist_all",ls())
 
 
 ###################       Load all required libraries     ########################
-
 
 
 # Check if required packages are already installed, and install if missing
@@ -184,6 +181,47 @@ sclass <- function(dist,all_groups, kp) {
   graphics:: title (main=paste0("MDS graph k= ",kp ), xlab = paste("MDS1:",mds.variation[1],"%"), ylab=paste("MDS2:",mds.variation[2],"%"))
   
 }
+
+#-------------------- Function for the optimal number of clusters ------------------#
+
+# index -> vector with the index values (e.g Calinski-Harabasz or silhouette)
+
+optimal <- function(index){
+  index <- index[2:length(index)]
+  # Create a geometric progression sequence of numbers
+  geom_pr <- c(1*1.025**seq(0,(kmers_limit-2),by=1))
+  # Adjust the indices based on the geometric progression sequence of numbers
+  ch_adj <- index/geom_pr
+  
+  # Check if the the biggest index in the last one
+  if (which.max(ch_adj)== (kmers_limit-1)){
+    # Choose the optimal number of clusters
+    optimal_cl <-  which.max(ch_adj)+1
+  } else {
+    # Number of iterations  
+    it <- 0
+    continue <- 1
+    # The calculation will stop when continue <- 0
+    while (continue==1){
+      # Calculate the difference between the biggest CH index and the next value
+      diff <- c(index[which.max(ch_adj)+1+it]-index[which.max(ch_adj)+it],index[which.max(ch_adj)+2+it]-index[which.max(ch_adj)+1+it])
+      # Check if the difference is greater than the 15% of the biggest value
+      if (diff[1]<0 & abs(diff[1]) < abs(diff[2]) & (index[which.max(ch_adj)+it]-index[which.max(ch_adj)+ 1+it])/index[which.max(ch_adj)] < 0.15) {
+        # Choose the optimal number of clusters
+        optimal_cl <- which.max(ch_adj)+2+it
+        it <- it+1
+        continue <- 1
+      } else  {
+        # Choose the optimal number of clusters
+        optimal_cl <-  which.max(ch_adj)+1+it
+        # Stop the iteration
+        continue <- 0
+      }
+    }
+  }
+  return(optimal_cl)
+}
+
 
 ##################  Create all the necessary paths and directories ###############
 
@@ -579,6 +617,31 @@ if (dim(table(unique_groups)) > 2) {
 ##############################################################################################
 
 
+#---------------------- Making all the necessary objects -------------------- #
+
+# Table containing the optimal number of clusters for every index
+Table1 <- list()
+
+# Table containing the Suggested number of clusters
+Table2 <- list()
+
+# Making a list for pairwise p-value table of PERMANOVA test
+Table3 <- list()
+
+# Making a list for the main titles of the pdf
+Main_Title <- list()
+
+# Creating a vector where the suggested number of clusters will be stored
+number_of_clusters2 <- c()
+
+# Creating a vector where the the suggested number of clusters for every group will be stored
+num_of_clusters <- c()
+
+
+#############################################################################
+#####################    Prediction Indices       ###########################
+#############################################################################
+
 for (i in 1:(length(Test_name)+1)){
   
 if (i==1){
@@ -587,8 +650,6 @@ if (i==1){
 } else {
   name <-Test_name[i-1]
   group <- Test_name[i-1]
-  
-  
 }
   
   # Create the directory where the outputs for every group will be saved 
@@ -642,9 +703,121 @@ if (i==1){
   # Calculate Within sum of squares
   wss <- fviz_nbclust(otu_file[meta_file[,mapping_column]%in% group,] ,diss=unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group], k.max = kmers_limit  ,cluster::pam, method =  "wss")
   
+  # Calculate prediction strength index
+  pred_kmers <- round(nrow(otu_file[meta_file[,mapping_column]%in%group,])/2,0)-2
+  if (kmers_limit<pred_kmers) {pred_kmers <- kmers_limit}
+  prediction_strength <- prediction.strength(as.dist(unifract_dist[meta_file[,mapping_column]%in%group,meta_file[,mapping_column]%in% group]), Gmin = 2, Gmax = as.numeric(pred_kmers) ,distances = TRUE, clustermethod = claraCBI)
+  
   # Perform Model-based clustering 
   mclust <-  Mclust(data = as.dist(unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group]),  modelNames = c("EII","VII","EEI","EVI","VEI","VVI") , verbose = F)
  
+  
+  # Predict the optimal number of clusters based on the wss plot
+  subtraction_1 <- NULL
+  subtraction_2 <- NULL
+  for (k in 1:(kmers_limit-1)) {subtraction_1[k] <- (wss[["data"]][["y"]][k])-(wss[["data"]][["y"]][k+1])}
+  for (k in 1:(kmers_limit-2)) {subtraction_2[k] <- subtraction_1[k+1]-subtraction_1[k]}
+  
+  wss_number <- which(subtraction_2==min(subtraction_2))+1
+  
+
+  # Predict the optimal number of clusters based on the Calinski-Harabasz Index
+  CH_number <- optimal(ch_nclusters)
+  
+  # Predict the optimal number of clusters based on the silhouette Index
+  silhouette_number <- optimal(sil_nclusters)
+  
+  # Predict the optimal number of clusters based on the Prediction Strength Index
+  PS_number <- which(prediction_strength$mean.pred==max(prediction_strength$mean.pred[2:pred_kmers]))
+  
+  # Predict the optimal number of clusters based on the mclust
+  if (mclust$G==1){
+  m_clust <- 1
+  } else {
+    m_clust <- ">1"
+  }
+  
+  # Vectors where will be place the number of optimal clusters based on each index
+  number_of_clusters<- c(Calinski_Harabasz=CH_number,Silhouette=silhouette_number,WSS=wss_number,Pred_strength=PS_number,mclust=m_clust)
+  number_of_clusters2 <- rbind(number_of_clusters2,number_of_clusters)
+  
+  # Calculate the frequency of each number
+  number_of_clusters<- number_of_clusters[order(number_of_clusters[1:4])]
+  frequency_number <- as.data.frame(table(number_of_clusters),stringsAsFactors = FALSE)
+  frequency_number<- frequency_number[order(frequency_number$Freq,decreasing = T),]
+  frequency_number[,1] <- as.numeric(frequency_number[,1])
+  
+  
+  if (nrow(frequency_number)==1){num_of_clusters=rbind(num_of_clusters,frequency_number[1,1])
+  } else if (frequency_number[1,2]-frequency_number[2,2]>=1) {num_of_clusters=rbind(num_of_clusters,frequency_number[1,1])
+  } else if (frequency_number[1,2]-frequency_number[2,2]==0) {num_of_clusters=rbind(num_of_clusters,min(number_of_clusters))
+  } else {num_of_clusters=CH_number}
+  
+  number_of_clusters2 <- data.frame(number_of_clusters2)
+  num_of_clusters <- data.frame(num_of_clusters)
+  colnames(num_of_clusters) <- c("Number of Clusters")
+  num2 <- data.table(num_of_clusters)
+  
+  
+  
+  ##################  Calculate the pairwise PERMANOVA p-values ###########################
+  
+  # PAM clustering based on the suggested number of clusters
+  data_cluster=as.vector(pam(as.dist(unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group]), num_of_clusters[i,1], diss=TRUE)$clustering)
+  names(data_cluster) <- rownames(unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group])
+  # Find all the combinations
+  combs <- combs(levels(as.factor(data_cluster)), 2)
+  
+  
+  
+  # Vector containing the p-values
+  pvalues <- c()
+  
+  # Calculate the PERMANOVA p-values
+  for (g in 1:nrow(combs)){ groups <- data_cluster[data_cluster %in% combs[g,]]
+  adonis <- adonis(unifract_dist[names(groups),names(groups)]~groups)[[1]][6][[1]][1]
+  pvalues <- rbind(pvalues,c(paste0(combs[g,1],"-",combs[g,2]),adonis))}
+  colnames(pvalues) <- c("Groups","p-value")
+  
+  
+  
+  ### Prepare the pdf with the information about the suggested number of clusters ###
+  
+  # Main title of the pdf
+  Main_Title[[i]] <- list() 
+  Main_Title[[i]] <- textGrob(paste0("'",name,"'", " Clustering"),gp = gpar(fontsize = 28,frontface="bold.italic"))
+  
+  
+  # Table containing the optimal number of clusters for every index
+  Table1[[i]] <- list()
+  Table1[[i]] <- tableGrob(number_of_clusters2[i,],rows = NULL)
+  # Title of tables in the PDF
+  title <- textGrob("Optimal number of clusters",gp = gpar(fontsize = 14))
+  padding <- unit(5,"mm")
+  # Adjust the grob placement accordingly
+  Table1[[i]]  <- gtable_add_rows(Table1[[i]] , heights = grobHeight(title) + padding,pos = 0)
+  Table1[[i]]  <- gtable_add_grob(Table1[[i]] , title, 1, 1, 1, ncol(Table1[[i]]),clip = "off")
+  
+  
+  # Table containing the Suggested number of clusters
+  Table2[[i]] <- list()
+  Table2[[i]] <- tableGrob(setDT(num2[i,], keep.rownames = "")[],rows = NULL)
+  # Title of tables in the PDF
+  title <- textGrob("Suggested number of clusters",gp = gpar(fontsize = 14))
+  padding <- unit(5,"mm")
+  # Adjust the grob placement accordingly
+  Table2[[i]]  <- gtable_add_rows(Table2[[i]] , heights = grobHeight(title) + padding,pos = 0)
+  Table2[[i]]  <- gtable_add_grob(Table2[[i]] , title, 1, 1, 1, ncol(Table2[[i]]),clip = "off")
+  
+  
+  # Table containing p values of pairwise PERMANOVA
+  Table3[[i]] <- tableGrob(data.frame(pvalues),rows = NULL)
+  # Title of tables in the PDF
+  title <- textGrob("Pairwise PERMANONA",gp = gpar(fontsize = 14))
+  padding <- unit(5,"mm")
+  # Adjust the grob placement accordingly
+  Table3[[i]]  <- gtable_add_rows(Table3[[i]] , heights = grobHeight(title) + padding,pos = 0)
+  Table3[[i]]  <- gtable_add_grob(Table3[[i]] , title, 1, 1, 1, ncol(Table3[[i]]),clip = "off")
   
 #################################################################################
 ######                        Write Output Files                           ######
@@ -660,7 +833,10 @@ if (i==1){
   plot(sil_nclusters, type="h", xlab="k clusters", ylab="Average silhouette width",main=paste0("'",name,"'"," Optimal number of clusters(Silhouette)"))
   # Plot WSS plot
   plot(1:kmers_limit,wss[["data"]][["y"]], type="b", xlab="k clusters", ylab="Within sum of squares",main=paste0("'",name,"'"," Optimal number of clusters(WSS)"),pch=19)
- 
+  # Plot prediction strength plot
+  plot(2:pred_kmers, prediction_strength$mean.pred[2:pred_kmers], ylab="Prediction Strength",ylim=c(0,1.1), type="b", pch=1, xlab="Number of Clusters",main=paste0("'",name,"'"," Optimal number of clusters(Prediction Strength)"))
+  abline(.9,0, lty=5, col="grey70")
+  abline(0.8,0,lty=8, col="grey70")
   # plot BIC values of the mclust
   plot(mclust,what="BIC",main=T)
   title(main=paste0("'",name,"'"," BIC values"))
@@ -669,6 +845,21 @@ if (i==1){
   
 }
 
+# Change working directory
+setwd(optimal_number_path)
+
+# Print the pdf with the suggested number of clusters and the corresponding MDS plot for each group
+pdf("Suggested Number of Clusters.pdf")
+
+for (j in 1:(length(Test_name)+1)){
+  
+  data_cluster=as.vector(pam(as.dist(unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group]), num_of_clusters[j,1], diss=TRUE)$clustering)
+  grid.arrange(Main_Title[[j]], Table1[[j]],Table2[[j]],Table3[[j]],nrow = 4,ncol=1,heights=c(0.5,1,1,1.5))
+  sclass(unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group],as.factor(data_cluster),num_of_clusters[j,1])
+  
+}
+
+dev.off()
 
 # Change working directory
 setwd(results_path)
