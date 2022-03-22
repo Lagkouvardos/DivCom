@@ -3845,6 +3845,7 @@ if (ncol(taxonomy)!=0) {
             
             # Vector containing the p-values
             pvaluesb <- c()
+            permdisp <- c()
             
             # Calculate the PERMANOVA p-values
             for (g in 1:nrow(combinations)){ 
@@ -3854,9 +3855,32 @@ if (ncol(taxonomy)!=0) {
               adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),ncol(plot_matrix)])[[1]][6][[1]][1]
               # Form the matrix with the p-values
               pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
+              # Calculate PERMDISP p-values
+              permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),ncol(plot_matrix)]),type="centroid"),pairwise = T)$pairwise[1]
+              # Store p-values in a vector
+              permdisp <- c(permdisp,permdisp_values)
             }
             
-            # Performing fdr correction
+            # Performing fdr correction for the PERMDISP p-values
+            permdisp_adj <- round(p.adjust(permdisp, method = "BH"),4)
+            
+            # PERMDISP < 0.05 add *
+            for (perm in 1:length(permdisp_adj)){
+              if (permdisp_adj[perm]<0.05){
+                pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
+              } else if (permdisp_adj[perm]<0.001){
+                pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"***")
+              }
+            }
+            
+            # Form a table with PERMDISP p-values
+            permdisp_pvalues <- data.frame(permdisp,permdisp_adj)
+            # Name the columns
+            colnames(permdisp_pvalues) <- c("p-value","Adj. p-value")
+            # Name the rows
+            rownames(permdisp_pvalues) <- pvaluesb[,1]
+            
+            # Performing fdr correction for the PERMANOVA p-values
             p.adjustb <- round(p.adjust(pvaluesb[,2], method = "BH"),4)
             
             # Add the adjusted p-values in the pvalues matrix
@@ -3964,8 +3988,34 @@ if (ncol(taxonomy)!=0) {
             if (plot_type == "Boxplots") {plot <-boxplot_list[[cluster]] } else if (plot_type == "Point plots") {plot <- pointplot_list[[cluster]] } else {plot <-violinplot_list[[cluster]]}
             
             
-            # Grid arrange all the above elements
-            grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.55,0.1,1))
+            if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])) != 1) {
+              
+              if ( any(permdisp_adj <0.05)) {
+                # Footnote
+                text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder. ")
+                
+                # Create a text grob for the Footnote
+                tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
+                
+              } else {
+                # Footnote
+                text4 <- paste("The p-values of the PERMDISP test have been printed at the results folder. ")
+                
+                # Create a text grob for the Footnote
+                tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
+              }
+              
+              # Arrange in the grid the above elements
+              grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,arrangeGrob(tree_plot,tgrob4,ncol=1,nrow=2,heights = c(1,0.1)),nrow = 3,as.table = T,heights=c(1.5,0.1,1))
+              
+              # Write the PERMDISP p-values
+              write_table(paste0("DeNoAn-page ",page, " PERMDISP pvalues.tab"),permdisp_pvalues,"pvalues")
+              
+            } else {
+              
+              # Arrange in the grid the above elements
+              grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.55,0.1,1))
+            }
             
             # Write the PERMANOVA p-values
             write_table(paste0("DiBaAn-page ",page," PERMANOVA pvalues.tab"),pvaluesb,"pvalues")
@@ -4750,6 +4800,7 @@ if (ncol(taxonomy)!=0) {
               
               # Vector containing the p-values
               pvaluesb <- c()
+              permdisp <- c()
               
               # Calculate the PERMANOVA p-values
               for (g in 1:nrow(combinations)){ 
@@ -4759,14 +4810,36 @@ if (ncol(taxonomy)!=0) {
                 adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),1])[[1]][6][[1]][1]
                 # Form the matrix with the p-values
                 pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
+                # Calculate PERMDISP p-values
+                permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),1]),type="centroid"),pairwise = T)$pairwise[1]
+                # Store p-values in a vector
+                permdisp <- c(permdisp,permdisp_values)
+                
               }
               
-              # Performing fdr correction
+              # Performing fdr correction for the PERMDISP p-values
+              permdisp_adj <- round(p.adjust(permdisp, method = "BH"),4)
+              
+              # PERMDISP < 0.05 add *
+              for (perm in 1:length(permdisp_adj)){
+                if (permdisp_adj[perm]<0.05){
+                  pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
+                } else if (permdisp_adj[perm]<0.001){
+                  pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"***")
+                }
+              }
+              
+              # Form a table with PERMDISP p-values
+              permdisp_pvalues <- data.frame(permdisp,permdisp_adj)
+              # Name the columns
+              colnames(permdisp_pvalues) <- c("p-value","Adj. p-value")
+              # Name the rows
+              rownames(permdisp_pvalues) <- pvaluesb[,1]
+              
+              # Performing fdr correction for the PERMANOVA p-values
               p.adjustb <- round(p.adjust(pvaluesb[,2], method = "BH"),4)
-              
-              # Add the adjusted p-values in the pvalues matrix
+              # Add the adjusted p-values in the p-values matrix
               pvaluesb <- data.frame(pvaluesb,p.adjustb)
-              
               # Name the columns
               colnames(pvaluesb) <- c("Groups","p-value","Adj. p-value")
             }
@@ -4846,9 +4919,34 @@ if (ncol(taxonomy)!=0) {
             # Choose the selected type of plot
             if (plot_type == "Boxplots") {plot <-boxplot_list[[cluster]] } else if (plot_type == "Point plots") {plot <- pointplot_list[[cluster]] } else {plot <-violinplot_list[[cluster]]}
             
-            
-            # Arrange in the grid the above elements
-            grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.5,0.2,1))
+            if (nlevels(as.factor(dist_plot_4[dist_plot_4$cluster==cluster,1])) != 1) {
+              
+              if ( any(permdisp_adj <0.05)) {
+                # Footnote
+                text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder. ")
+                
+                # Create a text grob for the Footnote
+                tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
+                
+              } else {
+                # Footnote
+                text4 <- paste("The p-values of the PERMDISP test have been printed at the results folder. ")
+                
+                # Create a text grob for the Footnote
+                tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
+              }
+              
+              # Arrange in the grid the above elements
+              grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,arrangeGrob(tree_plot,tgrob4,ncol=1,nrow=2,heights = c(1,0.1)),nrow = 3,as.table = T,heights=c(1.5,0.1,1))
+              
+              # Write the PERMDISP p-values
+              write_table(paste0("DeNoAn-page ",page, " PERMDISP pvalues.tab"),permdisp_pvalues,"pvalues")
+              
+            } else {
+              
+              # Arrange in the grid the above elements
+              grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,tree_plot,nrow = 3,as.table = T,heights=c(1.5,0.2,1))
+            }
             
             # Write the PERMANOVA p-values
             write_table(paste0("DeNoAn-page ",page, " PERMANOVA pvalues.tab"),pvaluesb,"pvalues")
