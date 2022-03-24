@@ -906,7 +906,7 @@ if (ncol(taxonomy)!=0) {
   index <- 1}
   
   # Check if the number of the given test clusters is equal to the number of the test groups
-  if (test_clusters!="Automated" & length(test_clusters )!= length(Test_name)) {test_clusters <- c()
+  if (all(test_clusters!="Automated") & length(test_clusters )!= length(Test_name)) {test_clusters <- c()
   index <- 1}
   
   # Check if a phylogenetic tree has been provided when the user chose the "mean" or "median" option
@@ -914,6 +914,18 @@ if (ncol(taxonomy)!=0) {
   
   # Check if the tree_or_matrix and input_tree_or_matrix are consistent to each other
   if ( file_ext(input_tree_or_matrix) == "nwk" | file_ext(input_tree_or_matrix) == "tre"){tree_or_matrix = "tree"}
+  
+  # Check if any cluster = 0
+  if (any(test_clusters==0)) {
+    test_clusters <- c()
+    index <- 1
+  }
+  
+  # Check if the test_clusters vector is empty
+  if (length(test_clusters)==1 & test_clusters==""){
+    test_clusters <- c()
+    index <- 1
+  }
   
   
   # chi_square= 0 -> Chi square analysis will be performed
@@ -946,7 +958,7 @@ if (ncol(taxonomy)!=0) {
   }
   
   # Check if the number of clusters for the test groups will be calculated automatically 
-  if (test_clusters=="Automated") {
+  if (all(test_clusters=="Automated")) {
     test_clusters <- c()
     test_clusters_in <- "Automated"
   } else {
@@ -954,7 +966,7 @@ if (ncol(taxonomy)!=0) {
   }
   
   # Check if the number of clusters for the reference group will be calculated automatically 
-  if (reference_clusters=="Automated") {
+  if (all(reference_clusters=="Automated")) {
     reference_clusters_in <- "Automated"
   } else {
     reference_clusters_in <- "Manually"
@@ -988,6 +1000,8 @@ if (ncol(taxonomy)!=0) {
       stop("You have entered the same names as reference and test groups.\n Each group can be either reference or test not  both!")
     if (all(c(Test_name,reference_name)%in%levels(factor(meta_file[,mapping_column]))) == FALSE)
       stop("The names of the Reference and Test groups does not exist in the mapping file!")
+    if (reference_clusters == 0)
+      stop("The number of reference clusters should be above 1")
     
     # Check if empty lines exist in otu file. If yes then these lines will be removed from otu file and mapping file
     if(anyNA(otu_file) == TRUE) {
@@ -1034,7 +1048,7 @@ if (ncol(taxonomy)!=0) {
     ####################################################
     
     # Calculate the optimal number of clusters for the reference group
-    if (reference_clusters=="Automated"){
+    if (all(reference_clusters=="Automated")){
       optimal <- optimal_k( unifract_dist[meta_file[,mapping_column] %in% reference_name,meta_file[,mapping_column] %in% reference_name])
       reference_clusters <- unlist(optimal[1])
       reference_CH <- unlist(optimal[2])
@@ -1157,7 +1171,7 @@ if (ncol(taxonomy)!=0) {
         for (i in 1:length(levels)) {
           
           # Calculate the optimal number of clusters for the reference group
-          if (test_clusters_in == "Automated"){
+          if (all(test_clusters_in == "Automated")){
             optimal <- optimal_k(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]])
             test_clusters[i] <- unlist(optimal[1])
             test_ch[[i]] <- unlist(optimal[2])
@@ -2520,7 +2534,7 @@ if (ncol(taxonomy)!=0) {
                         NULL, colour_matrix[levels(factor(mapping_cluster[which(input_table[,1] %in% reference_name)],levels = unique(mapping_cluster[which(input_table[,1] %in% reference_name)]))),2]))
       }
       
-      if (reference_clusters_in == "Automated"){
+      if (all(reference_clusters_in == "Automated")){
         # Set the plots_path
         setwd(plots_path)
         
@@ -2542,7 +2556,7 @@ if (ncol(taxonomy)!=0) {
         setwd(plots_path)
         
         # Print the CH indices for the test groups
-        if (index == 0 & test_clusters_in == "Automated") {
+        if (index == 0 & all(test_clusters_in == "Automated")) {
           pdf("Calinski-Harabasz for the test groups.pdf")
           for (j in 1:length(test_clusters)) {
             plot(2:9,test_ch[[j]], type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
@@ -3835,7 +3849,7 @@ if (ncol(taxonomy)!=0) {
           page <- page+1
           
           
-          if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])) == 1) {
+          if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])) == 1) {
             pvaluesb <- data.frame("Warning:","There is only one column.\n There are not any pairwise comparisons!")
             colnames(pvaluesb) <- c("","")
             rownames(pvaluesb) <- c("")
@@ -3988,7 +4002,7 @@ if (ncol(taxonomy)!=0) {
             if (plot_type == "Boxplots") {plot <-boxplot_list[[cluster]] } else if (plot_type == "Point plots") {plot <- pointplot_list[[cluster]] } else {plot <-violinplot_list[[cluster]]}
             
             
-            if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster==cluster,ncol(plot_matrix)])) != 1) {
+            if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])) != 1) {
               
               if ( any(permdisp_adj <0.05)) {
                 # Footnote
