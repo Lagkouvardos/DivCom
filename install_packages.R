@@ -23,7 +23,7 @@ setwd("D:/path/to/DivCom")
 
 # Check if required packages are already installed, and install if missing
 packages <-c("ade4","ape","caTools","cluster","cowplot","data.table","dplyr","factoextra",
-             "fpc","ggplot2","ggpubr","ggtree","graphics","grid","gtable","gridExtra","lattice",
+             "fpc","ggplot2","ggpubr","ggtree","graphics","grid","gtable","gridExtra","lattice","mclust",
              "GUniFrac","permute","phangorn","RColorBrewer","stats","tidyr","tools","vegan") 
 
 # Function to check whether the package is installed
