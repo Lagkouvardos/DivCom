@@ -41,7 +41,7 @@ The user has to provide three mandatory files
 * A phylogenetic tree that corresponds to the OTUs or ASVs of the abundance table OR a dissimilarity matrix.
 * A mapping file that contains the labels of the samples.
 
-The pre-processing of the raw sequencing data through the IMNGS platform (www.imngs.org) can provide the user with the necessary input files for the DivCom. Also, the  outputs derived from the Rhea pipeline (https://github.com/Lagkouvardos/Rhea) have the appropriate form to be used as inputs to the DivCom.
+The pre-processing of the raw sequencing data through the [IMNGS platform](www.imngs.org/ "IMNGS site") can provide the user with the necessary input files for the DivCom. Also, the  outputs derived from the [Rhea pipeline](https://github.com/Lagkouvardos/Rhea/ "Rhea repository") have the appropriate form to be used as inputs to the DivCom.
 
 
 ### Script structure
