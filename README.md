@@ -3,7 +3,7 @@
 
 
 ## Introduction
-When analyzing microbiome data, one of the main objectives is to effectively compare the microbial profiles of samples belonging to different groups. The visual representation of the dataset, usually in the form of a PCoA plot, in conjunction with the results obtained from a suitable statistical test like PERMANOVA, typically provides us with all the necessary information to draw conclusions about the overall similarity or dissimilarity of the observed microbial communities. However, this approach can lead us to misleading assumptions. To address those issues, we developed Divide and Compare (DivCom), an automated R-based tool for advanced beta diversity analysis. The main advantage of DivCom is that it does not rely only on the visual representation of the data or the results of the statistical tests. Instead, it takes into consideration the substructure of the data and uses beta diversity measures as distances metrics. Firstly, DivCom attempts to reveal the inner structure of the control group by dividing their samples into the appropriate number of subgroups. Then the program selects the most representative points of each cluster and calculates the distances of the profiles belonging to the test groups to those reference points. Finally, for each sample, the closest representative point is reported and stored. In this way, all the individual points are compared only with samples that are relative to them. As an extra layer to the DivCom analysis, the program also applies de novo clustering to the test groups.   
+When analyzing microbiome data, one of the main objectives is to effectively compare the microbial profiles of samples belonging to different groups. Divide and Compare (DivCom) is an automated tool for advanced beta diversity analysis. DivCom reveals the inner structure of the groups by dividing their samples into the appropriate number of clusters and then compares the distances of every profile to the centers of these clusters. The advantage of this approach is that it takes into consideration the substructure of the dataset and uses beta diversity measures as distances metrics. This information can be used for determining the existing interrelation of the groups.
 
 ## Description
 
@@ -17,6 +17,11 @@ DivCom consists of two scripts:
 The first script is named 'Beta-Diversity' and its purpose is to provide all the necessary information about the number of clusters of each group. This information will be used in the 'DivCom' script, which is the main script of the program that applies the proposed methodology. Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
 
 A detailed README file is provided for each of the scripts. In these files, the procedures followed by the program are described, and all the requirements are specified.
+
+The Workflow of DivCom is presented in the following Figure:
+
+<img src="https://drive.google.com/uc?export=view&id=1DONWzm4pXshoeudLq3kBjvlpbxWUAdsV" width="250" height="450" align="center">
+
 
 ### Requirements and Installation
 In order to execute the scripts, it is required the [R language](https://www.r-project.org/ "R download site") to be locally installed. The use of the [R-Studio](https://www.rstudio.com/products/rstudio-desktop/ "R-studio download site") will simplify the procedure even for non-experienced users. During the first execution of the program, all the necessary packages will be installed, so at least for this first run, a stable internet connection is required.
