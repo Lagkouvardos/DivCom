@@ -14,13 +14,15 @@ DivCom consists of two scripts:
 1.	Beta-Diversity
 2.	DivCom
 
-The first script is named 'Beta-Diversity' and its purpose is to provide all the necessary information about the number of clusters of each group. This information will be used in the 'DivCom' script, which is the main script of the program that applies the proposed methodology. Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
+The first script is named 'Beta-Diversity' and its purpose is to provide all the necessary information about the number of clusters of each group. This information will be used in the 'DivCom' script, which is the main script of the program that applies the proposed methodology. 
 
 A detailed README file is provided for each of the scripts. In these files, the procedures followed by the program are described, and all the requirements are specified.
 
+Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
+
 The Workflow of DivCom is presented in the following Figure:
 
-<a href="https://drive.google.com/uc?export=view&id=1DONWzm4pXshoeudLq3kBjvlpbxWUAdsV"><img src="https://drive.google.com/uc?export=view&id=1DONWzm4pXshoeudLq3kBjvlpbxWUAdsV" width="250" height="450" align="center">
+<img src="https://user-images.githubusercontent.com/68451208/163047398-72f8bab1-62b2-4ebd-bfcb-569ef848cc32.jpg" width="250" height="450" align="center">
 
 
 ### Requirements and Installation
