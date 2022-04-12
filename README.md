@@ -20,7 +20,7 @@ A detailed README file is provided for each of the scripts. In these files, the 
 
 The Workflow of DivCom is presented in the following Figure:
 
-<img src="https://drive.google.com/uc?export=view&id=1DONWzm4pXshoeudLq3kBjvlpbxWUAdsV" width="250" height="450" align="center">
+<a href="https://drive.google.com/uc?export=view&id=1DONWzm4pXshoeudLq3kBjvlpbxWUAdsV"><img src="https://drive.google.com/uc?export=view&id=1DONWzm4pXshoeudLq3kBjvlpbxWUAdsV" width="250" height="450" align="center">
 
 
 ### Requirements and Installation
