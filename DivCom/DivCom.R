@@ -1,6 +1,6 @@
 
 #'Script Title: DivCom 
-#'This script was last modified on 12/01/2022
+#'This script was last modified on 17/04/2022
 #'Authors: Evangelia Intze, Ilias Lagkouvardos
 #'
 #'
@@ -121,7 +121,7 @@ Test_name = c("IBD")
 #' There are two options: a User-defined vector and "Automated"
 #' 1) User-defined number  --> Form a vector with the the desired number of clusters for every test group (e.g test_clusters= c(3,2))
 #'                             !! CAUTION: In this case the number of clusters should be more than one !!
-#' 2) "Automated"          --> Insert "Automated" in case you wish the program to estimate the optimal number of clusters for each 
+#' 2) "Automated"          --> Insert "Automated" in case you wish the program to automatically estimate the optimal number of clusters for each 
 #'                             test group based on the Calinski-Harabasz index
 #' If you do not wish to perform de novo clustering to the test groups insert an empty vector  (e.g test_clusters= c())
 test_clusters = "Automated"
@@ -2538,11 +2538,23 @@ if (ncol(taxonomy)!=0) {
         # Set the plots_path
         setwd(plots_path)
         
-        # Print the CH indices for the reference group
-        pdf("Calinski-Harabasz for the reference group.pdf")
-        plot(2:9,reference_CH, type="h", xlab="k clusters", ylab="CH index",main=paste('Calinski-Harabasz scores of the',reference_name,'group'))
-        lines(x=(reference_clusters),y=reference_CH[reference_clusters-1],type="h",col="red")
-        dev.off()
+        if (reference_clusters > 1){
+          # Print the CH indices for the reference group
+          pdf("Calinski-Harabasz for the reference group.pdf")
+          plot(2:9,reference_CH, type="h", xlab="k clusters", ylab="CH index",main=paste('Calinski-Harabasz scores of the',reference_name,'group'))
+          lines(x=(reference_clusters),y=reference_CH[reference_clusters-1],type="h",col="red")
+          dev.off()
+        } else {
+          pdf("Optimal number of clusters for the reference group.pdf")
+          p <- ggplot() +
+            annotate("text", x = 10,  y = 10,
+                     size = 6,
+                     label = paste("According to the model based clustering \n There is only one cluster for the", reference_name, "group.")) + 
+            theme_void()
+          grid.arrange(p,nrow = 1)
+          
+          dev.off()
+        }
       }
       
       # Return to results path
@@ -2559,8 +2571,17 @@ if (ncol(taxonomy)!=0) {
         if (index == 0 & all(test_clusters_in == "Automated")) {
           pdf("Calinski-Harabasz for the test groups.pdf")
           for (j in 1:length(test_clusters)) {
-            plot(2:9,test_ch[[j]], type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
-            lines(x=(test_clusters[j]),y=test_ch[[j]][test_clusters[j]-1],type="h",col="red")
+            if (test_clusters[j] > 1){
+              plot(2:9,test_ch[[j]], type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
+              lines(x=(test_clusters[j]),y=test_ch[[j]][test_clusters[j]-1],type="h",col="red")
+            } else {
+              p <-  ggplot() +
+                annotate("text", x = 10,  y = 10,
+                         size = 6,
+                         label = paste("According to the model based clustering \n There is only one cluster for the", Test_name[j], "group.")) + 
+                theme_void()
+              grid.arrange(p,nrow = 1)
+            }
           }
           dev.off()
         }
@@ -3870,7 +3891,7 @@ if (ncol(taxonomy)!=0) {
               # Form the matrix with the p-values
               pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
               # Calculate PERMDISP p-values
-              permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),ncol(plot_matrix)]),type="centroid"),pairwise = T)$pairwise[1]
+              permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),ncol(plot_matrix)]),type="median"),pairwise = T)$pairwise[1]
               # Store p-values in a vector
               permdisp <- c(permdisp,permdisp_values)
             }
@@ -3880,9 +3901,9 @@ if (ncol(taxonomy)!=0) {
             
             # PERMDISP < 0.05 add *
             for (perm in 1:length(permdisp_adj)){
-              if (permdisp_adj[perm]<0.05){
+              if (permdisp_adj[perm] < 0.05 & is.na(permdisp_adj[perm])==F){
                 pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
-              } else if (permdisp_adj[perm]<0.001){
+              } else if (permdisp_adj[perm] < 0.001 & is.na(permdisp_adj[perm])==F){
                 pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"***")
               }
             }
@@ -4004,16 +4025,16 @@ if (ncol(taxonomy)!=0) {
             
             if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])) != 1) {
               
-              if ( any(permdisp_adj <0.05)) {
+              if ( any(permdisp_adj < 0.05 ) & all(is.na(permdisp_adj))==F) {
                 # Footnote
-                text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder. ")
+                text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder.")
                 
                 # Create a text grob for the Footnote
                 tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
                 
               } else {
                 # Footnote
-                text4 <- paste("The p-values of the PERMDISP test have been printed at the results folder. ")
+                text4 <- paste("All The p-values of the PERMDISP test are > 0.05. The exact p-values have been printed at the results folder.")
                 
                 # Create a text grob for the Footnote
                 tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
@@ -4799,7 +4820,7 @@ if (ncol(taxonomy)!=0) {
         }
         
         for (cluster in 1:reference_clusters) {
-          if (length(rownames(dist_plot_4[dist_plot_4$cluster==cluster,]))>2){
+          if (length(rownames(dist_plot_4[dist_plot_4$cluster==cluster,])) > 2){
             
             # Index indicating the page of the report
             page <- page+1
@@ -4825,7 +4846,7 @@ if (ncol(taxonomy)!=0) {
                 # Form the matrix with the p-values
                 pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
                 # Calculate PERMDISP p-values
-                permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),1]),type="centroid"),pairwise = T)$pairwise[1]
+                permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),1]),type="median"),pairwise = T)$pairwise[1]
                 # Store p-values in a vector
                 permdisp <- c(permdisp,permdisp_values)
                 
@@ -4836,9 +4857,9 @@ if (ncol(taxonomy)!=0) {
               
               # PERMDISP < 0.05 add *
               for (perm in 1:length(permdisp_adj)){
-                if (permdisp_adj[perm]<0.05){
+                if (permdisp_adj[perm] < 0.05 & is.na(permdisp_adj[perm])==F){
                   pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
-                } else if (permdisp_adj[perm]<0.001){
+                } else if (permdisp_adj[perm] < 0.001 & is.na(permdisp_adj[perm])==F){
                   pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"***")
                 }
               }
@@ -4935,16 +4956,16 @@ if (ncol(taxonomy)!=0) {
             
             if (nlevels(as.factor(dist_plot_4[dist_plot_4$cluster==cluster,1])) != 1) {
               
-              if ( any(permdisp_adj <0.05)) {
+              if ( any(permdisp_adj < 0.05) & all(is.na(permdisp_adj))==F) {
                 # Footnote
-                text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder. ")
+                text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder.")
                 
                 # Create a text grob for the Footnote
                 tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
                 
               } else {
                 # Footnote
-                text4 <- paste("The p-values of the PERMDISP test have been printed at the results folder. ")
+                text4 <- paste("All The p-values of the PERMDISP test are > 0.05. The exact p-values have been printed at the results folder.")
                 
                 # Create a text grob for the Footnote
                 tgrob4 <- text_grob(text4, face = "plain", color = "Black",size=9)
