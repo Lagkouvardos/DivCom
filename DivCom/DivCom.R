@@ -654,9 +654,9 @@ optimal_k<- function(unifract_dist){
   calinski_harabasz_values <-c()
   
   # Check if the number of samples are nine or more
-  if (nrow(unifract_dist) > 9) {
+  if (nrow(unifract_dist) > 10) {
     # Maximum number of clusters
-    max_cl =9
+    max_cl =10
   } else {
     # Maximum number of clusters
     max_cl = nrow(unifract_dist)
@@ -1001,7 +1001,7 @@ if (ncol(taxonomy)!=0) {
     if (all(c(Test_name,reference_name)%in%levels(factor(meta_file[,mapping_column]))) == FALSE)
       stop("The names of the Reference and Test groups does not exist in the mapping file!")
     if (reference_clusters == 0)
-      stop("The number of reference clusters should be above 1")
+      stop("The number of reference clusters should be more than 1")
     
     # Check if empty lines exist in otu file. If yes then these lines will be removed from otu file and mapping file
     if(anyNA(otu_file) == TRUE) {
@@ -2538,23 +2538,22 @@ if (ncol(taxonomy)!=0) {
         # Set the plots_path
         setwd(plots_path)
         
+        # Print the CH indices for the reference group
+        pdf("Optimal number of clusters for the reference group.pdf")
+        
         if (reference_clusters > 1){
-          # Print the CH indices for the reference group
-          pdf("Calinski-Harabasz for the reference group.pdf")
-          plot(2:9,reference_CH, type="h", xlab="k clusters", ylab="CH index",main=paste('Calinski-Harabasz scores of the',reference_name,'group'))
+          plot(2:(length(reference_CH)+1),reference_CH, type="h", xlab="k clusters", ylab="CH index",main=paste('Calinski-Harabasz scores of the',reference_name,'group'))
           lines(x=(reference_clusters),y=reference_CH[reference_clusters-1],type="h",col="red")
           dev.off()
         } else {
-          pdf("Optimal number of clusters for the reference group.pdf")
           p <- ggplot() +
             annotate("text", x = 10,  y = 10,
                      size = 6,
                      label = paste("According to the model based clustering \n There is only one cluster for the", reference_name, "group.")) + 
             theme_void()
           grid.arrange(p,nrow = 1)
-          
-          dev.off()
         }
+        dev.off()
       }
       
       # Return to results path
@@ -2569,10 +2568,10 @@ if (ncol(taxonomy)!=0) {
         
         # Print the CH indices for the test groups
         if (index == 0 & all(test_clusters_in == "Automated")) {
-          pdf("Calinski-Harabasz for the test groups.pdf")
+          pdf("Optimal number of clusters for the test groups.pdf")
           for (j in 1:length(test_clusters)) {
             if (test_clusters[j] > 1){
-              plot(2:9,test_ch[[j]], type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
+              plot(2:(length(test_ch[[j]])+1),test_ch[[j]], type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
               lines(x=(test_clusters[j]),y=test_ch[[j]][test_clusters[j]-1],type="h",col="red")
             } else {
               p <-  ggplot() +
