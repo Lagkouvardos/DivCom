@@ -1,6 +1,6 @@
 
 #'Script Title: DivCom 
-#'This script was last modified on 17/04/2022
+#'This script was last modified on 25/04/2022
 #'Authors: Evangelia Intze, Ilias Lagkouvardos
 #'
 #'
@@ -127,7 +127,8 @@ Test_name = c("IBD")
 test_clusters = "Automated"
 
 
-#' OPTIONAL- Please insert the names of the columns of the mapping file you wish to analyze against the de novo clusters 
+#' OPTIONAL- Please insert the names of the columns of the mapping file you wish to analyze against the de novo clusters (e.g exploratory_columns= c("column_a","column_b")).
+#' Otherwise insert: exploratory_columns = c()
 exploratory_columns = c("Iron_Time","Disease_Time_NI")
 
 
@@ -147,6 +148,7 @@ central_point = "medoid"
 #' 2) "Point plots"  -> All the samples will be presented as individual points. This option is preferable when the samples are low in number.
 #' 3) "Violin plots" -> This option displays in a more detailed view the distribution of the values.
 plot_type = "Boxplots"
+
 
 
 #################################################################################################################################################################
@@ -523,7 +525,7 @@ tree <- function(distance,groups,colours) {
 
 
 #------------------------------------------------------------------------------#
-#*************** Function that generates MDS and NMDS plots *******************#
+#******************** Function that generates MDS plots ***********************#
 #------------------------------------------------------------------------------#
 
 #   distance  -> the given distances matrix 
@@ -554,14 +556,11 @@ sclass <- function(distance,groups,individuals=NULL,col) {
   # Find the factors of all_groups_comp vector
   all_groups_comp <- factor(all_groups_comp,levels(all_groups_comp)[unique(all_groups_comp)])
   if (is.null(individuals) == FALSE) {
+    colour_pal <- as.character(c(brewer.pal(n =8, name = "Set2"),colors()[20:length(colors())]))
     # Create the colour vector
-    colors <- as.character(brewer.pal(n = (length(Test_name)+1), name = "Set2")[2:(nlevels(as.factor(individuals))+1)])
+    colors <- as.character(colour_pal[2:(nlevels(as.factor(individuals))+1)])
     # find the levels of the individual points
     plot_levels <- levels(individuals)
-    # Create a color palette for the individual points
-    colo <- c()
-    for (i in 1:length(plot_levels)) {colo <- c(colo,rep(colors[i],length(which(as.factor(mapping_cluster[which(input_table[,1] %in% levels)])==plot_levels[i]))))
-    }
   }
   
   # Display the MDS plot (Multidimensional Scaling plot)
@@ -574,10 +573,12 @@ sclass <- function(distance,groups,individuals=NULL,col) {
     s.class(
       mds$points[1:length(groups),], col = col, cpoint =
         1.5, grid = T,fac = all_groups_comp[1:length(groups)],xlim = c(1.4*min(mds[["points"]][,1]),1.2*max(mds[["points"]][,1])),ylim = c(1.2*min(mds[["points"]][,2]),1.5*max(mds[["points"]][,2])))
-    points(mds$points[(length(groups)+1):(length(groups)+length(individuals)),1],mds$points[(length(groups)+1):(length(groups)+length(individuals)),2],pch = 19,col=colo,cex=0.70)
+    points(mds$points[(length(groups)+1):(length(groups)+length(individuals)),1],mds$points[(length(groups)+1):(length(groups)+length(individuals)),2],pch = 19,col=c(rep(brewer.pal(n = 8, name = "Set2")[1],reference_clusters),
+                                                                                                                                                                      colour_matrix[levels(factor(individuals,levels = unique(individuals))),2]),cex=0.70)
     graphics:: title (main=paste0(" " ), xlab = paste("MDS1:",mds.variation[1],"%"), ylab=paste("MDS2:",mds.variation[2],"%"))
     legend(1.3*min(mds[["points"]][,1]),1.1*max(mds[["points"]][,2]),c(levels(as.factor(groups)),levels(as.factor(individuals))),
-           fill=c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[1],reference_clusters),colors),cex=0.8)
+           fill=c(rep(brewer.pal(n = 8, name = "Set2")[1],reference_clusters),
+                  colour_matrix[levels(factor(individuals,levels = unique(individuals))),2]),cex=0.8)
   }
 }
 
@@ -659,7 +660,7 @@ optimal_k<- function(unifract_dist){
     max_cl =10
   } else {
     # Maximum number of clusters
-    max_cl = nrow(unifract_dist)
+    max_cl = nrow(unifract_dist)-1
   }
   
   # Calculate Calinski-Harabasz index
@@ -669,7 +670,7 @@ optimal_k<- function(unifract_dist){
   }
   
   # Create a geometric progression sequence of numbers
-  geom_pr <- c(1*1.025**seq(0,(max_cl-2),by=1))
+  geom_pr <- c(1*1.018**seq(0,(max_cl-2),by=1))
   # Adjust the Calinski-Harabasz indices based on the geometric progression sequence of numbers
   ch_adj <- calinski_harabasz_values/geom_pr
   
@@ -922,9 +923,11 @@ if (ncol(taxonomy)!=0) {
   }
   
   # Check if the test_clusters vector is empty
-  if (length(test_clusters)==1 & test_clusters==""){
-    test_clusters <- c()
-    index <- 1
+  if (length(test_clusters)==1){
+    if (test_clusters==""){
+      test_clusters <- c()
+      index <- 1
+    }
   }
   
   
@@ -1530,11 +1533,13 @@ if (ncol(taxonomy)!=0) {
       # These colours will be used for all the following plots
       #-------------------------------------------------------------------#
       
+      colour_pal <- as.character(c(brewer.pal(n =8, name = "Set2"),colors()[20:length(colors())]))
+      
       
       # Colours for the reference clusters
       colour_groups <- levels(factor(plot_matrix[meta_file[,mapping_column]%in%reference_name,ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%reference_name,ncol(plot_matrix)])))
-      # Choose the colours from the 'Set2' palette
-      colour_vector <- c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[1],length(colour_groups)))
+      # Choose the colours from colour palette
+      colour_vector <- c(rep(colour_pal[1],length(colour_groups)))
       
       
       
@@ -1548,17 +1553,17 @@ if (ncol(taxonomy)!=0) {
             # De novo clustering groups
             colour_groups <- c(colour_groups,levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],1], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],1]))))}
           # colours for the distances-based groups
-          colour_vector <- c(colour_vector,c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)])))))))
+          colour_vector <- c(colour_vector,c(rep(colour_pal[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],ncol(plot_matrix)])))))))
           if (index == 0){
             # colours for the de novo clustering groups
-            colour_vector <- c(colour_vector,c(rep(brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],1], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],1])))))))}
+            colour_vector <- c(colour_vector,c(rep(colour_pal[i+1],length(levels(factor(plot_matrix[meta_file[,mapping_column]%in%levels[i],1], levels=unique(plot_matrix[meta_file[,mapping_column]%in%levels[i],1])))))))}
         }
         
         for(i in 1:length(levels)) {
           # Add the test groups
           colour_groups <- c(colour_groups,levels[i])
           # Colour for the test groups
-          colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[i+1])
+          colour_vector <- c(colour_vector,colour_pal[i+1])
         }
       }
       
@@ -1566,14 +1571,14 @@ if (ncol(taxonomy)!=0) {
       # Add the Reference group (1 group)
       colour_groups <- c(colour_groups,paste(reference_name,collapse="+"))
       # Colour for the Reference group (1 group)
-      colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[1])
+      colour_vector <- c(colour_vector,colour_pal[1])
       
       
       # Add the Reference groups when exist more than one 
       if (length(reference_name) > 1){
         for(i in 1:length(reference_name)){
           colour_groups <- c(colour_groups,reference_name[i])
-          colour_vector <- c(colour_vector,brewer.pal(n = (length(Test_name)+1), name = "Set2")[1])
+          colour_vector <- c(colour_vector,colour_pal[1])
         }
       }
       
@@ -1668,10 +1673,17 @@ if (ncol(taxonomy)!=0) {
       # Print the reference_statistic and cluster_statistics tables
       write_table("DeNoAn- page 4 Table 1.tab",data.frame(rbind(reference_statistic,cluster_statistics)),"table")
       
-      
-      # Table containing the Descriptive statistics of the reference clusters
-      reference_statistis_table <- gtableGrob("Descriptive statistics of the reference clusters (Table 1)",data.frame(rbind(reference_statistic,cluster_statistics)),setDT="YES",size=12)
-      
+      if(nrow(data.frame(rbind(reference_statistic,cluster_statistics)))>10){
+        # temporary dataframe
+        tdf <- data.frame(rbind("The table is too large to be printed!!","* The results are at the results folder"))
+        colnames(tdf) <- c(" ")
+        rownames(tdf) <- c(""," ")
+        # Table containing the Descriptive statistics of the reference clusters
+        reference_statistis_table <- gtableGrob("Descriptive statistics of the reference clusters (Table 1)",tdf,setDT="YES",size=12)
+      } else{
+        # Table containing the Descriptive statistics of the reference clusters
+        reference_statistis_table <- gtableGrob("Descriptive statistics of the reference clusters (Table 1)",data.frame(rbind(reference_statistic,cluster_statistics)),setDT="YES",size=12)
+      }
       #-----------------------------#
       
       
@@ -1712,9 +1724,20 @@ if (ncol(taxonomy)!=0) {
         # Print the all_cluster_statistics table
         write_table("DeNoAn- page 4 Table 2.tab",data.frame(all_cluster_statistics),"table")
         
-        # Table containing the Descriptive statistics of the test clusters
-        statistic_table_test_clusters <- gtableGrob("Descriptive statistics of the test clusters (Table 2)",data.frame(all_cluster_statistics),setDT="YES",size=12)
         
+        if(nrow(data.frame(all_cluster_statistics))>10){
+          
+          # temporary dataframe
+          tdf <- data.frame(rbind("The table is too large to be printed!!","* The results are at the results folder"))
+          colnames(tdf) <- c(" ")
+          rownames(tdf) <- c(""," ")          
+          # Table containing the Descriptive statistics of the test clusters
+          statistic_table_test_clusters <- gtableGrob("Descriptive statistics of the reference clusters (Table 2)",tdf,setDT="YES",size=12)
+          
+        }else{
+          # Table containing the Descriptive statistics of the test clusters
+          statistic_table_test_clusters <- gtableGrob("Descriptive statistics of the test clusters (Table 2)",data.frame(all_cluster_statistics),setDT="YES",size=12)
+        }
       }
       
       #-----------------------------#
@@ -1920,8 +1943,9 @@ if (ncol(taxonomy)!=0) {
         } else {
           chi_matrix_large <- data.frame(rbind("The table is too large to be printed!!",
                                                "* The results are at the results folder"))
-          colnames(chi_matrix_large) <- c("")
-          DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",chi_matrix_large,setDT="NO",size=12)
+          colnames(chi_matrix_large) <- c(" ")
+          rownames(chi_matrix_large) <- c(""," ")
+          DB_matrix_table <- gtableGrob("Distances based (DB) clustering (Table 1) ",chi_matrix_large,setDT="YES",size=12)
           
         }
         
@@ -2422,16 +2446,34 @@ if (ncol(taxonomy)!=0) {
           }else{
             write_table("DeNoAn-page 6 Table.tab",observations_matrtix,"table")}
           
-          # Create a gtable containing text grobs of the observations_matrtix (will be used later)
-          observation <- gtableGrob("Closest Reference cluster",observations_matrtix,setDT="YES",size=15)
+          if (nrow(observations_matrtix)>10){
+            # temporary dataframe
+            tdf <- data.frame(rbind("The table is too large to be printed!!","* The results are at the results folder"))
+            colnames(tdf) <- c(" ")
+            rownames(tdf) <- c(""," ")
+            # Create a gtable containing text grobs of the observations_matrtix (will be used later)
+            observation <- gtableGrob("Closest Reference cluster",tdf,setDT="YES",size=15)
+          }else{
+            # Create a gtable containing text grobs of the observations_matrtix (will be used later)
+            observation <- gtableGrob("Closest Reference cluster",observations_matrtix,setDT="YES",size=15)
+          }
           
           if(chi_square == 1){
             write_table(paste("DeNoAn-page",(length(exploratory_columns)*length(Test_name)+length(exploratory_columns)+1+8) , "Table.tab"),median_matrix,"table")
           }else{
             write_table("DeNoAn-page 8 Table.tab",median_matrix,"table")}
           
-          # Create a gtable containing text grobs of the median_matrix (will be used later)
-          median_matrix_table <- gtableGrob("Median distances from reference clusters",median_matrix,setDT="NO",size=15)
+          if (nrow(median_matrix)>10){
+            # temporary dataframe
+            tdf <- data.frame(rbind("The table is too large to be printed!!","* The results are at the results folder"))
+            colnames(tdf) <- c(" ")
+            rownames(tdf) <- c(""," ")
+            # Create a gtable containing text grobs of the median_matrix (will be used later)
+            median_matrix_table <- gtableGrob("Median distances from reference clusters",tdf,setDT="YES",size=15)
+          }else{
+            # Create a gtable containing text grobs of the median_matrix (will be used later)
+            median_matrix_table <- gtableGrob("Median distances from reference clusters",median_matrix,setDT="NO",size=15)
+          }
           
           
           
@@ -2612,7 +2654,10 @@ if (ncol(taxonomy)!=0) {
         #################################      REPORTS         #################################
         ########################################################################################
         
-        
+        if (nchar(paste(Test_name,collapse="-"))>30){
+          report_test_name <- c()
+        }else{
+          report_test_name <- paste0("(",paste(Test_name,collapse=","),")")}
         
         
         #################################################
@@ -2654,7 +2699,7 @@ if (ncol(taxonomy)!=0) {
                                       "of the test samples from their closest reference ", central_point,".\n",
                                       "The Reference samples were clustered into ",reference_clusters, " distinct groups* based on\n",
                                       "the results of the PAM algorithm. The remaining samples of the test \n groups ",
-                                      "were compared with the ",central_point,"s of the reference clusters\n",
+                                      "were compared with the ",central_point,"s of the reference clusters.\n",
                                       "\n","All the elements of this report (plots and tables) will be found in the \n results folder with the prefix DiBaAn-\n\n\n\n\n\n",
                                       "* If the program automatically calculated the optimal number of clusters,\n the plots of the Calinski-Harabasz index\n will be fount in the plots folder."),cex = 1.1, col = "black",font = 3)
         
@@ -2679,7 +2724,7 @@ if (ncol(taxonomy)!=0) {
         title(main="MDS Plot",cex.main = 1.7,font.main = 2)
         # Text of the plot
         text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n",
-                                     "and the test samples (", paste(Test_name,collapse="-"), ") " ),cex = 1.5, col = "black")
+                                     "and the test samples ",report_test_name, ". " ),cex = 1.5, col = "black")
         
         # MDS plot where the refernce groups has been clustered and all the test samples are represented as individual points
         sclass(unifract_dist,factor(input_table[,1],levels=unique(input_table[,1])),NULL,colour_matrix[levels(factor(input_table[,1],levels=unique(input_table[,1]))),2] )
@@ -2710,7 +2755,7 @@ if (ncol(taxonomy)!=0) {
         tgrob1 <- text_grob(text, face = "bold.italic", color = "Black",size=16)
         
         # Description of the Phylogram
-        text2 <- paste0("Phylogram of the reference (",paste(reference_name,collapse="+"),") and test (", paste(Test_name,collapse="-"), ")\n" , "samples")
+        text2 <- paste0("Phylogram of the reference (",paste(reference_name,collapse="+"),") and test ", report_test_name, "\n" , "samples.")
         # Create a text grob for the Description
         tgrob2 <- text_grob(text2, face = "italic", color = "Black",size=12)
         
@@ -2766,8 +2811,8 @@ if (ncol(taxonomy)!=0) {
         # Title of the plot
         title(main="MDS Plot",cex.main = 1.7,font.main = 2)
         # Text of the plot
-        text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n"," clustered into ", test_clusters ," Groups\n",
-                                     "and the test samples (", paste(Test_name,collapse="-"), ") as individual points" ),cex = 1.5, col = "black")
+        text(x=0.5, y = 0.45, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") \n"," clustered into ", reference_clusters ," Groups\n",
+                                     "and the test samples ", report_test_name, " as individual points." ),cex = 1.5, col = "black")
         
         # MDS plot where the refernce groups has been clustered and all the test samples are represented as individual points
         sclass(unifract_dist,as.factor(mapping_cluster[which(input_table[,1] %in% reference_name)]),as.factor(mapping_cluster[which(input_table[,1] %in% levels)]),
@@ -2790,7 +2835,7 @@ if (ncol(taxonomy)!=0) {
         
         # Description of the list_box2[[2]]
         text <- paste0(plot_type," displaying the distribution of the distances around the closest referenece ",central_point,".\n",
-                       "For each sample of the test groups (",paste(Test_name,collapse="-"), ") the nearest reference ",central_point," \nwas found ", "and then these distances were calculated.")
+                       "For each sample of the test groups ",report_test_name, " the nearest reference ",central_point," \nwas found ", "and then these distances were calculated.")
         
         # Create a text grob for the Description of the list_box2[[2]]
         tgrob <- text_grob(text, face = "italic", color = "Black",size=12)
@@ -2838,7 +2883,7 @@ if (ncol(taxonomy)!=0) {
             page <- page+1
             
             # Tile of the page
-            text1 <- paste("Statistical Analysis* of the \n", paste(exploratory_columns,collapse=","),"columns.")
+            text1 <- paste("Statistical Analysis* of the \n", "selected exploratory columns.")
             
             # Create a text grob for the title
             tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
@@ -3796,7 +3841,7 @@ if (ncol(taxonomy)!=0) {
         # Create an empty plot
         plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
         # Description of the MDS plot
-        text(x=0.5, y = 0.8, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") clustered into ",test_clusters, " Groups\n", "and the test samples (" ,paste(Test_name,collapse="-"), ")\n",
+        text(x=0.5, y = 0.8, paste0("MDS plot presenting the reference Samples (", paste(reference_name,collapse="+"), ") clustered into ",reference_clusters, " Groups\n", "and the test samples " ,report_test_name, "\n",
                                     "clustered into groups based on their distances from the closest reference ",central_point,"." ), cex = 1.5, col = "black")
         
         # Default margins
@@ -3814,7 +3859,7 @@ if (ncol(taxonomy)!=0) {
         # Description of list_box
         text <- paste0("The test samples have been clustered based on their distances from the\n", "closest reference ",central_point,".\n",
                        "The ",plot_type, " present the distribution of distances of each of these samples from \n",
-                       "their nearest reference cluster\n",
+                       "their nearest reference cluster.\n",
                        "The p-values for every reference cluster and its nearest test clusters are displayed.\n",
                        "On the next pages each reference cluster will be examined seperatly.")
         
@@ -3973,12 +4018,12 @@ if (ncol(taxonomy)!=0) {
                 temporary <- plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]
                 # Write how many samples of each test group is closer to every reference cluster
                 paste2 <- paste(nrow(temporary[temporary$Nearest.reference.cluster == cluster,]),"of the", nrow(plot_matrix[rownames(input_table[which(input_table[,1] == levels[group]),]),]),
-                                "samples of the", levels[group], " group are closer to the reference cluster",cluster,"\n")
+                                "samples of the", levels[group], " group are closer to the reference cluster",cluster,".\n")
                 # Final text
                 text <- paste(text,paste2)
               }
             } else {
-              text <- paste("The next MDS plot presents the closest samples of each group to the reference cluster",cluster)
+              text <- paste0("The next MDS plot presents the closest samples of each group to the reference cluster ",cluster,".")
             }
             
             # Information about the number of the test samples that are closer to each reference cluster
@@ -4024,7 +4069,7 @@ if (ncol(taxonomy)!=0) {
             
             if (nlevels(as.factor(plot_matrix[plot_matrix$Nearest.reference.cluster == cluster,ncol(plot_matrix)])) != 1) {
               
-              if ( any(permdisp_adj < 0.05 ) & all(is.na(permdisp_adj))==F) {
+              if ( any(permdisp_adj < 0.05,na.rm=T ) & all(is.na(permdisp_adj))==F) {
                 # Footnote
                 text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder.")
                 
@@ -4148,7 +4193,9 @@ if (ncol(taxonomy)!=0) {
           number_samples <- c()
           
           for (j in 1:test_clusters[i]) {
-            clustering_text <- paste(clustering_text,levels[i],j,"has", length(which(denovo_clusters==paste(levels[i],j))),"samples.\n")
+            if (sum(reference_clusters)+sum(test_clusters)<18){
+              clustering_text <- paste(clustering_text,levels[i],j,"has", length(which(denovo_clusters==paste(levels[i],j))),"samples.\n")
+            }
             if (test_clusters[i] > 1) {
               number_samples <- c(number_samples,length(which(denovo_clusters==paste(levels[i],j))))
               propability <- c(propability,1/test_clusters[i])
@@ -4158,7 +4205,7 @@ if (ncol(taxonomy)!=0) {
           if (test_clusters[i] > 1) {
             
             # Calculate the Chi-square p-values
-            clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*\n")
+            clustering_text <- paste(clustering_text,paste("The p-value of the Chi square (Goodness of fit) test is",round(chisq.test(number_samples,p=propability)$p.value,4)),"*.\n")
           }
         }
         
@@ -4201,7 +4248,7 @@ if (ncol(taxonomy)!=0) {
         
         # Description of the MDS plot
         text(x=0.5, y = 0.30, paste0("MDS plot presenting the groups which have formed from the de novo clustering of  \n the ", 
-                                     "reference (", paste(reference_name,collapse="+"), ") and the test samples (", paste(Test_name,collapse="+"), ") \n"), cex = 1.5, col = "black")
+                                     "reference (", paste(reference_name,collapse="+"), ") and the test samples ", report_test_name, " \n"), cex = 1.5, col = "black")
         
         # MDS plot presenting the clusters of the de novo clustering of both the reference and test groups
         sclass(unifract_dist,factor(denovo_clusters,levels=unique(denovo_clusters)),
@@ -4248,7 +4295,7 @@ if (ncol(taxonomy)!=0) {
           page <- page+1
           
           # Tile of the page
-          text1 <- paste("Statistical Analysis* of the \n", paste(exploratory_columns,collapse=","),"columns.")
+          text1 <- paste("Statistical Analysis* of the \n", "selected exploratory columns.")
           
           # Create a text grob for the title
           tgrob <- text_grob(text1,face = "bold.italic", color = "Black",size=20)
@@ -4894,7 +4941,12 @@ if (ncol(taxonomy)!=0) {
             pvaluetable <- gtableGrob("PEMANOVA test - pairwise",pvaluesb2,setDT="NO",size=9)
             
             temporary <- rownames(median_matrix[which(median_matrix[,ncol(median_matrix)]==cluster),])
-            paste2 <- paste0("According to the median distances from the reference ",central_point, ".\n", paste(paste(temporary,collapse=",")))
+            
+            if (nchar(paste(temporary,collapse=","))>55){
+              paste2 <- "MDS plot presenting the test clusters that"
+            }else{
+              paste2 <- paste0("According to the median distances from the reference ",central_point, ".\n", paste(paste(temporary,collapse=",")))
+            }
             
             
             
@@ -4910,11 +4962,11 @@ if (ncol(taxonomy)!=0) {
             title(main=paste("Reference Cluster",cluster),cex.main = 2)
             
             if (length(temporary) == 0){
-              text(x = 0.5, y = 0.3, paste("None of the test groups are closer to Reference cluster ",cluster,"."),cex = 1.5, col = "black",font = 3)
+              text(x = 0.5, y = 0.3, paste("None of the test groups are closer to Reference cluster ",cluster,"."),cex = 1.3, col = "black",font = 3)
             } else if (length(temporary)==1){
-              text(x = 0.5, y = 0.3, paste0(paste2," is closer to Reference cluster ", cluster,"."),cex = 1.5, col = "black",font = 3)
+              text(x = 0.5, y = 0.3, paste0(paste2," is closer to Reference cluster ", cluster,"."),cex = 1.3, col = "black",font = 3)
             } else {
-              text(x = 0.5, y = 0.3, paste0(paste2," are closer to Reference cluster ", cluster,"."),cex = 1.5, col = "black",font = 3)
+              text(x = 0.5, y = 0.3, paste0(paste2," are closer to Reference cluster ", cluster,"."),cex = 1.3, col = "black",font = 3)
             }
             
             
@@ -4955,7 +5007,7 @@ if (ncol(taxonomy)!=0) {
             
             if (nlevels(as.factor(dist_plot_4[dist_plot_4$cluster==cluster,1])) != 1) {
               
-              if ( any(permdisp_adj < 0.05) & all(is.na(permdisp_adj))==F) {
+              if ( any(permdisp_adj < 0.05,na.rm=T) & all(is.na(permdisp_adj))==F) {
                 # Footnote
                 text4 <- paste("PERMDISP P-values: *< 0.05; ***< 0.01. The p-values of the PERMDISP test have been printed at the results folder.")
                 
