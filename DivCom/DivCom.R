@@ -654,7 +654,7 @@ optimal_k<- function(unifract_dist){
   # Vector where the indices will be stored
   calinski_harabasz_values <-c()
   
-  # Check if the number of samples are nine or more
+  # Check if the number of samples are ten or more
   if (nrow(unifract_dist) > 10) {
     # Maximum number of clusters
     max_cl =10
@@ -901,6 +901,14 @@ if (ncol(taxonomy)!=0) {
   test_clusters <- c()
   index <- 1}
   
+  # Check if  the names of the test groups have been provided correctly
+  if (length(Test_name)>0){
+    if (any(Test_name=="") | any(Test_name==" ")){
+      Test_name <- "None"
+      test_clusters <- c()
+      index <- 1
+    }
+  }
   
   # Check if the number of the given test clusters is equal to the number of the test groups
   if (length(test_clusters) != length(levels) & all(Test_name == "All")) {test_clusters <- c()
@@ -1297,6 +1305,19 @@ if (ncol(taxonomy)!=0) {
       # Add cluster vector as a new column in the distances_matrix
       distances_matrix[,(clusters_number+1)] <- c(clusters) 
       
+      # Column names of the distances_matrix
+      col_names <- c()
+      for (ref in 1:reference_clusters){
+        col_names <- c(col_names,paste0(central_point,"_",ref,"(Ref)"))
+      }
+      
+      if (length(Test_name)>0){
+        if (all(Test_name!="") & all(Test_name!=" ")){
+          for(test in 1:length(Test_name)){
+            col_names <- c(col_names,paste0(central_point,"(",Test_name[test],")"))
+          }
+        }
+      }
       
       if (clusters_number == 1){
         
@@ -1311,8 +1332,9 @@ if (ncol(taxonomy)!=0) {
         # Find the distance to the closest reference central point for every sample
         minimum_reference_distance <- as.numeric(c(distances_matrix[,1]))
         
+        
         # Name the columns of the distances_matrix
-        colnames(distances_matrix) <- c(paste("Distance", central_point,1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster")
+        colnames(distances_matrix) <- c(col_names,"Pam cluster","Nearest cluster","Nearest reference cluster")
         
       } else { 
         
@@ -1333,7 +1355,7 @@ if (ncol(taxonomy)!=0) {
         minimum_reference_distance <- apply(distances_matrix[,1:(ncol(distances_matrix)-3)],1,function(x) min(x[1:(clusters_number-test_groups_number)]))
         
         # Name the columns of the distances_matrix
-        colnames(distances_matrix) <- c(paste("Distance",central_point,1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster")
+        colnames(distances_matrix) <- c(col_names,"Pam cluster","Nearest cluster","Nearest reference cluster")
         
       }
       
@@ -1799,7 +1821,7 @@ if (ncol(taxonomy)!=0) {
         # Add "YES" and "NO" as a new column to the distances_matrix
         distances_matrix[,(clusters_number+4)] <- temporary_vector
         # Name the columns of the distances_matrix
-        colnames(distances_matrix) <- c(paste("Distance Medoid",1:clusters_number,sep="_"),"Pam cluster","Nearest cluster","Nearest reference cluster","Most distant object" )
+        colnames(distances_matrix) <- c(col_names,"Pam cluster","Nearest cluster","Nearest reference cluster","Most distant object" )
       }
       
       # Calculate the median distances of each test cluster from the reference clusters
@@ -2584,9 +2606,8 @@ if (ncol(taxonomy)!=0) {
         pdf("Optimal number of clusters for the reference group.pdf")
         
         if (reference_clusters > 1){
-          plot(2:(length(reference_CH)+1),reference_CH, type="h", xlab="k clusters", ylab="CH index",main=paste('Calinski-Harabasz scores of the',reference_name,'group'))
+          plot(2:(length(reference_CH)+1),reference_CH,ylim=c(0,1.05*max(reference_CH)), type="h", xlab="k clusters", ylab="CH index",main=paste('Calinski-Harabasz scores of the',reference_name,'group'))
           lines(x=(reference_clusters),y=reference_CH[reference_clusters-1],type="h",col="red")
-          dev.off()
         } else {
           p <- ggplot() +
             annotate("text", x = 10,  y = 10,
@@ -2613,7 +2634,7 @@ if (ncol(taxonomy)!=0) {
           pdf("Optimal number of clusters for the test groups.pdf")
           for (j in 1:length(test_clusters)) {
             if (test_clusters[j] > 1){
-              plot(2:(length(test_ch[[j]])+1),test_ch[[j]], type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
+              plot(2:(length(test_ch[[j]])+1),test_ch[[j]], ylim=c(0,1.05*max(test_ch[[j]])), type="h", xlab="k clusters", ylab="CH index",main=paste("Calinski-Harabasz scores of the", Test_name[j], "group"))
               lines(x=(test_clusters[j]),y=test_ch[[j]][test_clusters[j]-1],type="h",col="red")
             } else {
               p <-  ggplot() +
@@ -4088,7 +4109,7 @@ if (ncol(taxonomy)!=0) {
               grid.arrange(arrangeGrob(plot,pvaluetable,ncol=2,nrow=1,widths = c(1,1)),tgrob3,arrangeGrob(tree_plot,tgrob4,ncol=1,nrow=2,heights = c(1,0.1)),nrow = 3,as.table = T,heights=c(1.5,0.1,1))
               
               # Write the PERMDISP p-values
-              write_table(paste0("DeNoAn-page ",page, " PERMDISP pvalues.tab"),permdisp_pvalues,"pvalues")
+              write_table(paste0("DiBaAn-page ",page, " PERMDISP pvalues.tab"),permdisp_pvalues,"pvalues")
               
             } else {
               
