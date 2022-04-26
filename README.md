@@ -20,7 +20,7 @@ A detailed README file is provided for each of the scripts. In these files, the 
 
 Also, there is an extra folder that contains the template data of the DivCom. These data can be used for training and demonstration purposes. 
 
-The Workflow of DivCom is presented in the following Figure:
+The Workflow of DivCom is presented on the following Figure:
 
 <img src="https://user-images.githubusercontent.com/68451208/163047398-72f8bab1-62b2-4ebd-bfcb-569ef848cc32.jpg" width="250" height="450" align="center">
 
@@ -36,7 +36,6 @@ In order to use DivCom, the following steps should be followed:
 *	For a smoother experience and reduced waiting times, we recommend running the install_packages.R script first. This script will automatically install all the packages required by DivCom scripts. Packages that, for any reason, cannot be installed automatically will be identified and noted in the corresponding report.
 
 ### Input Files
-
 The user has to provide three mandatory files
 
 * An OTUs or ASVs abundance table.
@@ -49,12 +48,12 @@ The pre-processing of the raw sequencing data through the [IMNGS platform](www.i
 ### Script structure
 In order for the program to be as user-friendly as possible, the two scripts of DivCom follow the same structure.
 
-Each script contains sections: 
-* The Commentary
-* The Initialization
-* The Main section. 
+Each script contains: 
+* The Commentary section
+* The Initialization section
+* The Main section 
 
-The general rule that applies is that the lines concerning the Commentary and Initialization sections start with a hash sign followed by a back-tick (#`). These lines aim to inform the user about the details of the program and the actions that should be followed. The comments in the Main section start with the hash sign (#), and it is advised not to be changed by the user.
+The general rule that applies is that the lines concerning the Commentary and Initialization sections start with a hash sign followed by a back-tick (#`). These lines aim to inform the user about the details of the program and the actions that should be followed. The comments in the Main section start with the hash sign (#), and it is advised these lines not to be changed by the user.
 
 Please follow the instractions and guidlines as they presented in the scripts.
 
