@@ -65,7 +65,7 @@
 setwd("C:/...../..../DivCom")  
 
 
-#' Please give the name of the OTUs or ASVs table (Accepted Formats: txt, tab, csv, tsv) 
+#' Please provide the name of the OTUs or ASVs table (Accepted Formats: txt, tab, csv, tsv) 
 input_otu = "OTUs-Table.tab" 
 
 
@@ -127,7 +127,7 @@ Test_name = c("IBD")
 test_clusters = "Automated"
 
 
-#' OPTIONAL- Please insert the names of the columns of the mapping file you wish to analyze against the de novo clusters (e.g exploratory_columns= c("column_a","column_b")).
+#' OPTIONAL- Please insert the names of the columns of the mapping file you wish to statistically analyze against the de novo clusters (e.g exploratory_columns= c("column_a","column_b")).
 #' Otherwise insert: exploratory_columns = c()
 exploratory_columns = c("Iron_Time","Disease_Time_NI")
 
@@ -687,7 +687,7 @@ optimal_k<- function(unifract_dist){
       # Calculate the difference between the biggest CH index and the next CH value
       diff <- c(calinski_harabasz_values[which.max(ch_adj)+1+i]-calinski_harabasz_values[which.max(ch_adj)+i],calinski_harabasz_values[which.max(ch_adj)+2+i]-calinski_harabasz_values[which.max(ch_adj)+1+i])
       # Check if the differnce is greater than the 15% of the biggest value
-      if (diff[1]<0 & abs(diff[1]) < abs(diff[2]) & (calinski_harabasz_values[which.max(ch_adj)+i]-calinski_harabasz_values[which.max(ch_adj)+ 1+i])/calinski_harabasz_values[which.max(ch_adj)] < 0.15) {
+      if (diff[1]<0 & abs(diff[1]) < abs(diff[2]) & (calinski_harabasz_values[which.max(ch_adj)+i]-calinski_harabasz_values[which.max(ch_adj)+ 1+i])/calinski_harabasz_values[which.max(ch_adj)] < 0.20) {
         # Choose the optimal number of clusters
         k <- which.max(ch_adj)+2+i
         i <- i+1
@@ -1058,6 +1058,8 @@ if (ncol(taxonomy)!=0) {
     #------Pam Clustering For the Reference Group------#
     ####################################################
     
+    cluster_medoids <- data.frame()
+    
     # Calculate the optimal number of clusters for the reference group
     if (all(reference_clusters=="Automated")){
       optimal <- optimal_k( unifract_dist[meta_file[,mapping_column] %in% reference_name,meta_file[,mapping_column] %in% reference_name])
@@ -1104,6 +1106,8 @@ if (ncol(taxonomy)!=0) {
         } else {
           # Create a matrix that includes only the centroids
           cluster_centroid <- otu_file[pam[["medoids"]],]
+          cluster_medoids[1:reference_clusters,1] <- paste(paste(reference_name,collapse="+"),1:reference_clusters)
+          cluster_medoids[1:reference_clusters,2] <- pam[["medoids"]]
         }
       }
       #-------------#
@@ -1125,9 +1129,12 @@ if (ncol(taxonomy)!=0) {
           } else {
             if (central_point == "medoid"){
               # Perform Pam algorithm
-              m <- otu_file[pam(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]], 1, diss=TRUE)[["medoids"]],]
+              test_pam <- pam(unifract_dist[meta_file[,mapping_column] == levels[i],meta_file[,mapping_column] == levels[i]], 1, diss=TRUE)[["medoids"]]
+              m <- otu_file[test_pam,]
               # Add the new medoid to the cluster_centroid matrix
               cluster_centroid <- rbind(cluster_centroid,m)
+              cluster_medoids[(nrow(cluster_medoids)+1),1] <- levels[i]
+              cluster_medoids[nrow(cluster_medoids),2] <- test_pam
             } else {
               if (central_point == "median"){
                 
@@ -1150,7 +1157,7 @@ if (ncol(taxonomy)!=0) {
       
       if (central_point != "medoid"){
         # Name the rows of the cluster_centroid(IN case of "mean" or "median")
-        rownames(cluster_centroid) <- c(paste0("mean",1:nrow(cluster_centroid)))
+        rownames(cluster_centroid) <- c(paste0(central_point,1:nrow(cluster_centroid)))
       }
       
       #------------#
@@ -1196,6 +1203,10 @@ if (ncol(taxonomy)!=0) {
             names(test_groups_clusters2) <- rownames(otu_file[meta_file[,mapping_column] == levels[i],])
             denovo_clusters <- c(denovo_clusters,test_groups_clusters2)
             
+            if (central_point == "medoid"){
+              cluster_medoids[(nrow(cluster_medoids)+1):(nrow(cluster_medoids)+test_clusters[i]),1] <- paste(levels[i],1:test_clusters[i])
+              cluster_medoids[(nrow(cluster_medoids)-test_clusters[i]+1):nrow(cluster_medoids),2] <- pam2[["medoids"]]
+            }
           } else {index <- 1}
         }
       }
@@ -1466,6 +1477,11 @@ if (ncol(taxonomy)!=0) {
       
       # Selecting a single Medoid for the reference group by performing PAM clustering
       self_pam <- pam(unifract_dist[meta_file[,mapping_column]%in%reference_name,meta_file[,mapping_column]%in% reference_name], 1, diss=TRUE)[["medoids"]]
+      if (central_point == "medoid"){
+        cluster_medoids <- rbind(c(paste(reference_name,collapse="+"),self_pam),cluster_medoids)
+        colnames(cluster_medoids) <- c("Group","Medoid")
+        cluster_medoids <- cluster_medoids[c(1:(reference_clusters+1),order(cluster_medoids[(reference_clusters+2):nrow(cluster_medoids),1])+(reference_clusters+1)),]
+      }
       
       # Form a vector containing distances to self Medoid (in this case reference group has only one Medoid)
       if (any(Test_name != "None")){
@@ -2041,7 +2057,7 @@ if (ncol(taxonomy)!=0) {
           
           
           # Table containing p values of groups independence testing
-          chisquare_pvalues <- gtableGrob("P-values of Chi square test\n Goodness of fit test- (Table 2)",p_value2,setDT="NO",size=12)
+          chisquare_pvalues <- gtableGrob("P-values of Chi square test\n Goodness of fit test (Table 2)",p_value2,setDT="NO",size=12)
           
         }
       }
@@ -2969,8 +2985,8 @@ if (ncol(taxonomy)!=0) {
                 # Main text of the page
                 text <- paste0("The relationship between the reference clusters and the  '",exploratory_columns[k],"' column  \nwill be examined in the following pages.\n\n",
                                "The distribution of the samples across the reference clusters is presented in Table(s) \nof the first line.\n\n",
-                               "Table 2 presents the p-values of the Chi-square test of the observed distribution \nof the counts against the expected distribution if the counts were \nuniformly distributed.\n\n",
-                               "Table 3 contains the p-values of the pairwise comparisons.\n\n",
+                               "Table 1 presents the p-values of the Chi-square test of the observed distribution \nof the counts against the expected distribution if the counts were \nuniformly distributed.\n\n",
+                               "Table 2 contains the p-values of the pairwise comparisons.\n\n",
                                "The tables contain only the 10 most significant p-values. The rest of the p-values \nhave been printed in the results folder.")
                 
                 # Create a text grob for the text
@@ -3132,11 +3148,11 @@ if (ncol(taxonomy)!=0) {
                   }
                   
                   # Write counts table at results folder
-                  write_table(paste0("DiBaAn-page ",page, " Counts per Cluster (Table 1).tab"),chi_matrix,"table")
+                  write_table(paste0("DiBaAn-page ",page, " Counts per Cluster.tab"),chi_matrix,"table")
                   # Write Expected-observed p-values at results folder
-                  write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                  write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 1).tab"),expected,"pvalues")
                   # Write pairwise p-values at results folder
-                  write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                  write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 2).tab"),p_value,"pvalues")
                   
                   if (sum(nchar(colnames(chi_matrix))) < 80) {
                     
@@ -3153,8 +3169,8 @@ if (ncol(taxonomy)!=0) {
                     tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
                     
                     # Arrange in the grid the above elements
-                    grid.arrange(tgrob,gtableGrob("Counts per Cluster (Table 1)",chi_matrix,setDT="YES",size=12),
-                                 arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
+                    grid.arrange(tgrob,gtableGrob("Counts per Cluster",chi_matrix,setDT="YES",size=12),
+                                 arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 1)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 2)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
                                  nrow = 3,heights=c(0.4,1,2))
                   } else {
                     text1 <- paste("Only the reference group has factors for the",exploratory_columns[k],"column.")
@@ -3395,13 +3411,13 @@ if (ncol(taxonomy)!=0) {
                         if (nrow(p_value)>10) {p_value2 <- p_value[1:10,]} else {p_value2 <- p_value}
                         
                         # Write Reference counts table at result folder
-                        write_table(paste0("DiBaAn-page ",page," ",reference_name," Group (Table 1).tab"),chi_ref,"table")
+                        write_table(paste0("DiBaAn-page ",page," ",reference_name," Group.tab"),chi_ref,"table")
                         # Write test counts table at result folder
-                        write_table(paste0("DiBaAn-page ",page," ",Test_name[i]," Group (Table 2).tab"),chi_test,"table")
+                        write_table(paste0("DiBaAn-page ",page," ",Test_name[i]," Group.tab"),chi_test,"table")
                         # Write Expected-observed p-values at result folder
-                        write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                        write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 1).tab"),expected,"pvalues")
                         # Write pairwise p-values at result folder
-                        write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                        write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 2).tab"),p_value,"pvalues")
                         
                         if ((sum(nchar(colnames(chi_ref)))+sum(nchar(colnames(chi_test)))) < 80){
                           # Tile of the page
@@ -3417,8 +3433,8 @@ if (ncol(taxonomy)!=0) {
                           tgrob2 <- text_grob(text1,face = "bold.italic", color = "Black",size=12)
                           
                           # Arrange in the grid the above elements
-                          grid.arrange(tgrob,arrangeGrob(gtableGrob(paste(reference_name,"Group (Table 1)"),chi_ref,setDT="YES",size=12),gtableGrob(paste(Test_name[i],"Group (Table 2)"),chi_test,setDT="YES",size=12),nrow=1)
-                                       , arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1))
+                          grid.arrange(tgrob,arrangeGrob(gtableGrob(paste(reference_name,"Group"),chi_ref,setDT="YES",size=12),gtableGrob(paste(Test_name[i],"Group"),chi_test,setDT="YES",size=12),nrow=1)
+                                       , arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 1)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 2)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1))
                                        , ncol = 1, nrow = 3,heights=c(0.4,1,2))
                         } else {
                           text1 <- paste(exploratory_columns[k],"-",Test_name[i])
@@ -3590,11 +3606,11 @@ if (ncol(taxonomy)!=0) {
                         }
                         
                         # Write counts table at results folder
-                        write_table(paste0("DiBaAn-page ",page, " Counts per Cluster (Table 1).tab"),chi_matrix,"table")
+                        write_table(paste0("DiBaAn-page ",page, " Counts per Cluster.tab"),chi_matrix,"table")
                         # Write Expected-observed p-values at results folder
-                        write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 2).tab"),expected,"pvalues")
+                        write_table(paste0("DiBaAn-page ",page, " Expected-observed (Table 1).tab"),expected,"pvalues")
                         # Write pairwise p-values at results folder
-                        write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 3).tab"),p_value,"pvalues")
+                        write_table(paste0("DiBaAn-page ",page, " Pairwise comparisons (Table 2).tab"),p_value,"pvalues")
                         
                         if (sum(nchar(colnames(chi_matrix))) < 80) {
                           
@@ -3611,8 +3627,8 @@ if (ncol(taxonomy)!=0) {
                           tgrob2 <- text_grob(text2,face = "bold.italic", color = "Black",size=12)
                           
                           # Arrange in the grid the above elements
-                          grid.arrange(tgrob,gtableGrob("Counts per Cluster (Table 1)",chi_matrix,setDT="YES",size=12),
-                                       arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 2)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 3)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
+                          grid.arrange(tgrob,gtableGrob("Counts per Cluster",chi_matrix,setDT="YES",size=12),
+                                       arrangeGrob(tgrob2,arrangeGrob(gtableGrob("Expected-observed (Table 1)",expected2,setDT="YES",size=12),gtableGrob("Pairwise comparisons (Table 2)",p_value2,setDT="NO",size=12),nrow=1),nrow=2,heights=c(0.3,1), ncol = 1), 
                                        nrow = 3,heights=c(0.4,1,2))
                         } else {
                           text1 <- paste(exploratory_columns[k],"-",Test_name[i])
@@ -3956,25 +3972,25 @@ if (ncol(taxonomy)!=0) {
               # Form the matrix with the p-values
               pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
               # Calculate PERMDISP p-values
-              permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),ncol(plot_matrix)]),type="median"),pairwise = T)$pairwise[1]
+              permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),ncol(plot_matrix)]),type="median"),pairwise = T)$pairwise[2]
               # Store p-values in a vector
               permdisp <- c(permdisp,permdisp_values)
             }
             
             # Performing fdr correction for the PERMDISP p-values
-            permdisp_adj <- round(p.adjust(permdisp, method = "BH"),4)
+            permdisp_adj <- round(p.adjust(unlist(permdisp), method = "BH"),4)
             
             # PERMDISP < 0.05 add *
             for (perm in 1:length(permdisp_adj)){
-              if (permdisp_adj[perm] < 0.05 & is.na(permdisp_adj[perm])==F){
-                pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
-              } else if (permdisp_adj[perm] < 0.001 & is.na(permdisp_adj[perm])==F){
+              if (permdisp_adj[perm] < 0.01 & is.na(permdisp_adj[perm])==F){
                 pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"***")
+              } else if (permdisp_adj[perm] < 0.05 & is.na(permdisp_adj[perm])==F){
+                pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
               }
             }
             
             # Form a table with PERMDISP p-values
-            permdisp_pvalues <- data.frame(permdisp,permdisp_adj)
+            permdisp_pvalues <- data.frame(unlist(permdisp),permdisp_adj)
             # Name the columns
             colnames(permdisp_pvalues) <- c("p-value","Adj. p-value")
             # Name the rows
@@ -4913,26 +4929,26 @@ if (ncol(taxonomy)!=0) {
                 # Form the matrix with the p-values
                 pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
                 # Calculate PERMDISP p-values
-                permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),1]),type="median"),pairwise = T)$pairwise[1]
+                permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),1]),type="median"),pairwise = T)$pairwise[2]
                 # Store p-values in a vector
                 permdisp <- c(permdisp,permdisp_values)
                 
               }
               
               # Performing fdr correction for the PERMDISP p-values
-              permdisp_adj <- round(p.adjust(permdisp, method = "BH"),4)
+              permdisp_adj <- round(p.adjust(unlist(permdisp), method = "BH"),4)
               
               # PERMDISP < 0.05 add *
               for (perm in 1:length(permdisp_adj)){
-                if (permdisp_adj[perm] < 0.05 & is.na(permdisp_adj[perm])==F){
-                  pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
-                } else if (permdisp_adj[perm] < 0.001 & is.na(permdisp_adj[perm])==F){
+                if (permdisp_adj[perm] < 0.01 & is.na(permdisp_adj[perm])==F){
                   pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"***")
+                } else if (permdisp_adj[perm] < 0.05 & is.na(permdisp_adj[perm])==F){
+                  pvaluesb[perm,1] <- paste0(pvaluesb[perm,1],"*")
                 }
               }
               
               # Form a table with PERMDISP p-values
-              permdisp_pvalues <- data.frame(permdisp,permdisp_adj)
+              permdisp_pvalues <- data.frame(unlist(permdisp),permdisp_adj)
               # Name the columns
               colnames(permdisp_pvalues) <- c("p-value","Adj. p-value")
               # Name the rows
@@ -5248,11 +5264,18 @@ if (ncol(taxonomy)!=0) {
       setwd(tables_path)
       
       # Write a table that contains all the Medoids' distances 
-      write.table(distances_matrix, "Distances From Cluster Medoids.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
+      #distances_matrix <- data.frame(distances_matrix[,1:clusters_number],"Closest Reference Cluster"=summarized_distance_matrix$`Closest Reference Cluster`,distances_matrix[,(clusters_number+1):ncol(distances_matrix)])
+      write.table(distances_matrix, "1.Distances From Cluster Medoids.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
+      
+      # Write a table that contains the medoids of the clusters
+      if (central_point=="medoid"){
+        write.table(cluster_medoids, "3.Clusters Medoids.tab", sep = "\t",col.names =TRUE, row.names = FALSE,quote = FALSE)
+        
+      }
       
       # Write a table that contains the ordered distance of all the samples
       if (any(Test_name != "None")) {
-        write.table(ordered_clusters, "Ordered cluster distances(All Samples).tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
+        write.table(ordered_clusters, "2.Ordered cluster distances(All Samples).tab", sep = "\t",col.names =TRUE, row.names = TRUE,quote = FALSE)
       }
       
       # Return to results path
