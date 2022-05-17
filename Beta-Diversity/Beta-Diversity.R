@@ -1,6 +1,6 @@
 
 #' Script: Beta-Diversity
-#' #'This script was last modified on 12/01/2022
+#' #'This script was last modified on 17/05/2022
 
 #' Author: Ilias Lagkouvardos
 #' 
@@ -70,7 +70,6 @@ tree_or_matrix = "tree"
 
 
 #' Please insert the name of the distances matrix or the anme of the phylogenetic tree 
-#' -> -> !!! In case you will choose the "mean" or "median" option you HAVE TO provide a phylogenetic tree !!! <- <-
 input_tree_or_matrix = "OTUs-NJTree.tre" 
 
 
@@ -91,7 +90,7 @@ Reference_name = c("NI")
 #' There are two options: a User-defined vector or "None"
 #' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the groups (e.g test_name <- c("group_a","group_b"))
 #' 2)     c()             --> In case you insert an empty vector,there won't be any test group. 
-#'                            Only the indeces of the reference samples will be calculated (Not recommended)
+#'                            Only the indexes of the reference samples will be calculated (Not recommended)
 Test_name =c("IBD")
 
 
@@ -99,9 +98,14 @@ Test_name =c("IBD")
 
 
 #' Turn on sample labeling
+#' 0 = Samples are not labeled in the phylogram
+#' 1 = All Samples are labeled in the phylogram
+tips_labels = 1
+
 #' 0 = Samples are not labeled in the MDS/NMDS plots
 #' 1 = All Samples are labeled in the MDS/NMDS plots
 label_samples = 0
+
 
 #' Determine which sample labeled should appear
 #' Write the name of samples (in quotation marks), which should appear in the MDS/NMDS plots, in the vector (c) below
@@ -131,7 +135,7 @@ ls <- c("meta_file","otu_file","unifract_dist_all",ls())
 
 
 # Check if required packages are already installed, and install if missing
-packages <-c("ade4","ape","caTools","cluster","data.table","dplyr","factoextra","fpc",
+packages <-c("ade4","ape","caTools","cluster","data.table","dplyr","factoextra","fpc", "ggpubr","ggtree",
              "graphics","grid","gridExtra","gtable","lattice","GUniFrac","mclust","permute",
              "phangorn","stats","tools","vegan") 
 
@@ -149,6 +153,13 @@ if (("ade4" %in% installed.packages()) == FALSE) {
 
 # Applying the installation on the list of packages
 lapply(packages, InsPack)
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+if (("ggtree" %in% installed.packages()) == FALSE) {
+  BiocManager::install("ggtree",update=FALSE,force = TRUE)
+}
 
 # Make the libraries
 lib <- lapply(packages, require, character.only = TRUE)
@@ -442,24 +453,53 @@ all_groups <- as.factor(meta_file[,ncol(meta_file)])
 setwd(beta_diversity_path)
 
 # Save the UniFrac output as distance object
+all_dist_matrix <- unifract_dist[rownames(meta_file),rownames(meta_file)]
 all_dist_matrix <- as.dist(unifract_dist)
+
+# Matrix containing the samples and the corresponding groups the belong
+Samples_matrix <- data.frame(rownames(unifract_dist),all_groups)
+# Name the rows of the Samples_matrix
+rownames(Samples_matrix) <- Samples_matrix[,1]
+
+# colours of the tree
+plot_color<-rainbow(length(levels(all_groups)))
 
 # Apply a hierarchical cluster analysis on the distance matrix based on the Ward's method
 all_fit <- hclust(all_dist_matrix, method = "ward.D2")
 
 # Generates a tree from the hierarchically generated object
 tree <- as.phylo(all_fit)
-my_tree_file_name <- paste("phylogram","(",paste(groups_name,collapse="-"),").pdf",sep="")
-plot_color<-rainbow(length(levels(all_groups)))[all_groups]
+
+# Generate the circular cladogram
+ggtree_plot <- ggtree(tree,  layout='circular')
+if (tips_labels==1){
+# Add the annotation ring
+ggheatmap <- gheatmap( ggtree_plot, Samples_matrix[,2,drop=F] , offset=0, width=0.1, colnames_position="bottom", colnames_angle=90, colnames_offset_y = 0.25,hjust=10)+
+  theme(plot.title=element_text( hjust=0.5, face='bold',size=18))+
+  geom_tiplab(offset = .6, hjust = .5,size=3) +
+  scale_fill_manual(breaks=c(levels(as.factor(all_groups))), values=plot_color,name="Groups")
+} else {
+  ggheatmap <- gheatmap( ggtree_plot, Samples_matrix[,2,drop=F] , offset=0, width=0.1, colnames_position="bottom", colnames_angle=90, colnames_offset_y = 0.25,hjust=10)+
+    theme(plot.title=element_text( hjust=0.5, face='bold',size=18))+
+    scale_fill_manual(breaks=c(levels(as.factor(all_groups))), values=plot_color,name="Groups")
+}
+
 
 # Save the generated phylogram in a pdf file
+# title of the pdf file
+my_tree_file_name <- paste("phylogram","(",paste(groups_name,collapse="-"),").pdf",sep="")
+
 pdf(my_tree_file_name)
 
-# The tree is visualized as a Phylogram color-coded by the selected group name
-plot(tree, type = "phylogram",use.edge.length = TRUE, tip.color = (plot_color), label.offset = 0.01)
-print.phylo(tree)
-axisPhylo()
-tiplabels(pch = 16, col = plot_color)
+# Title of the cladogram
+text <- paste("Phylogram")
+
+# Create a text grob for the cladogram
+tgrob <- text_grob(text, face = "bold", color = "Black")
+
+# grid arrange the plot
+grid.arrange(tgrob,ggheatmap,nrow=2,heights=c(0.5,3))
+
 dev.off()
 
 #################            Build NMDS plot           ########################
@@ -852,6 +892,11 @@ setwd(optimal_number_path)
 pdf("Suggested Number of Clusters.pdf")
 
 for (j in 1:(length(Test_name)+1)){
+  
+  if (j==1){group <- Reference_name
+  } else {
+    group <- Test_name[j-1]
+  }
   
   data_cluster=as.vector(pam(as.dist(unifract_dist[meta_file[,mapping_column]%in% group,meta_file[,mapping_column]%in% group]), num_of_clusters[j,1], diss=TRUE)$clustering)
   grid.arrange(Main_Title[[j]], Table1[[j]],Table2[[j]],Table3[[j]],nrow = 4,ncol=1,heights=c(0.5,1,1,1.5))
