@@ -61,3 +61,7 @@ Please follow the instractions and guidlines as they presented in the scripts.
 Keeping one copy of the DivCom files in each study will help to avoid mixing up different analyses. We also recommend looking for new and improved versions of DivCom from time to time.
 
 
+### Citation
+If you use DivCom in your work, please cite the original publication:
+
+ Intze E and Lagkouvardos I (2022) DivCom: A Tool for Systematic Partition of Groups of Microbial Profiles Into Intrinsic Subclusters and Distance-Based Subgroup Comparisons. Front. Bioinform. 2:864382. doi: 10.3389/fbinf.2022.864382
