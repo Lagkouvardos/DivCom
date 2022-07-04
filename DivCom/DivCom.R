@@ -1,6 +1,6 @@
 
 #'Script Title: DivCom 
-#'This script was last modified on 25/04/2022
+#'This script was last modified on 04/07/2022
 #'Authors: Evangelia Intze, Ilias Lagkouvardos
 #'
 #'
@@ -112,7 +112,7 @@ reference_clusters = 2
 
 #' Please provide the names of the test groups 
 #' There are two options: a User-defined vector or "None"
-#' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the groups (e.g test_name <- c("group_a","group_b"))
+#' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the test groups (e.g test_name <- c("group_a","group_b"))
 #' 2)     "None" or c()   --> There won't be any test group. Only the distances of the reference samples will be calculated (Not recommended)
 Test_name = c("IBD")
 
@@ -547,10 +547,12 @@ sclass <- function(distance,groups,individuals=NULL,col) {
   # Performing analysis of variance using the distance matrix(only if individuals=NULL)
   if(is.null(individuals)==TRUE & nlevels(groups) > 1) {
     # PERMANOVA test
-    adonis <- adonis(distance ~ all_groups_comp)
+    adonis <- adonis2(distance ~ all_groups_comp)
+    permdisp <- permutest(betadisper(as.dist(distance),as.factor(all_groups_comp),type="median"))
     # Create Subtitle
-    sub <-  paste("MDS plot of Microbial Profiles\n(p-value ",adonis[[1]][6][[1]][1],")",sep="")
-  } else {
+    sub = paste("MDS plot of Microbial Profiles\nPERMDISP     p=",permdisp[["tab"]][["Pr(>F)"]][1],"\n",
+                "PERMANOVA  p=",adonis[1,5],sep="")
+    } else {
     sub <- c("")
   }
   # Find the factors of all_groups_comp vector
@@ -3968,9 +3970,9 @@ if (ncol(taxonomy)!=0) {
               # Choose the groups for the pairwise comparisons
               groups <- rownames(plot_matrix[plot_matrix[,ncol(plot_matrix)] %in% combinations[g,],])
               # Calculate pairwise PERMANOVA p-values
-              adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),ncol(plot_matrix)])[[1]][6][[1]][1]
+              adonis <- adonis2(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),ncol(plot_matrix)])
               # Form the matrix with the p-values
-              pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
+              pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis[1,5]))
               # Calculate PERMDISP p-values
               permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),ncol(plot_matrix)]),type="median"),pairwise = T)$pairwise[2]
               # Store p-values in a vector
@@ -4925,9 +4927,9 @@ if (ncol(taxonomy)!=0) {
                 # Choose the groups for the pairwise comparison
                 groups <- rownames(plot_matrix[plot_matrix[,1] %in% combinations[g,],])
                 # Calculate pairwise PERMANOVA p-values
-                adonis <- adonis(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),1])[[1]][6][[1]][1]
+                adonis <- adonis2(unifract_dist[c(groups),c(groups)]~plot_matrix[c(groups),1])
                 # Form the matrix with the p-values
-                pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis))
+                pvaluesb <- rbind(pvaluesb,c(paste0(combinations[g,1],"-",combinations[g,2]),adonis[1,5]))
                 # Calculate PERMDISP p-values
                 permdisp_values <- permutest(betadisper(as.dist(unifract_dist[c(groups),c(groups)]),as.factor(plot_matrix[c(groups),1]),type="median"),pairwise = T)$pairwise[2]
                 # Store p-values in a vector

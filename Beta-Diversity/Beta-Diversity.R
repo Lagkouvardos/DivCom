@@ -1,6 +1,6 @@
 
 #' Script: Beta-Diversity
-#' #'This script was last modified on 17/05/2022
+#' #'This script was last modified on 04/07/2022
 
 #' Author: Ilias Lagkouvardos
 #' 
@@ -88,7 +88,7 @@ Reference_name = c("NI")
 
 #' Please provide the names of the test groups 
 #' There are two options: a User-defined vector or "None"
-#' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the groups (e.g test_name <- c("group_a","group_b"))
+#' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the test groups (e.g test_name <- c("group_a","group_b"))
 #' 2)     c()             --> In case you insert an empty vector,there won't be any test group. 
 #'                            Only the indexes of the reference samples will be calculated (Not recommended)
 Test_name =c("IBD")
@@ -514,14 +514,17 @@ pdf(file_name)
 all_groups_comp <- all_groups[!is.na(all_groups)]
 unifract_dist_comp <- unifract_dist[!is.na(all_groups), !is.na(all_groups)]
 if (nlevels(all_groups_comp)>1){
-adonis<-adonis(as.dist(unifract_dist_comp) ~ all_groups_comp)}
+adonis<-adonis2(as.dist(unifract_dist_comp) ~ all_groups_comp)
+permdisp <- permutest(betadisper(as.dist(unifract_dist_comp),as.factor(all_groups_comp),type="median"))
+}
 all_groups_comp<-factor(all_groups_comp,levels(all_groups_comp)[unique(all_groups_comp)])
 
 # Calculate and display the MDS plot (Multidimensional Scaling plot)
 if(nlevels(all_groups_comp)>1){
 s.class(
   cmdscale(unifract_dist_comp, k = 2), col = unique(plot_color), cpoint =
-    2, fac = all_groups_comp, sub = paste("MDS plot of Microbial Profiles\n(p-value ",adonis[[1]][6][[1]][1],")",sep="")
+    2, fac = all_groups_comp, sub = paste("MDS plot of Microbial Profiles\nPERMDISP     p=",permdisp[["tab"]][["Pr(>F)"]][1],"\n",
+                                          "PERMANOVA  p=",adonis[1,5],sep="")
 )} else {s.class(
   cmdscale(unifract_dist_comp, k = 2), col = unique(plot_color), cpoint =
     2, fac = all_groups_comp)}
@@ -536,7 +539,8 @@ meta <- metaMDS(unifract_dist_comp,k = 2)
 if (nlevels(all_groups_comp)>1){
   s.class(
   meta$points, col = unique(plot_color), cpoint = 2, fac = all_groups_comp,
-  sub = paste("metaNMDS plot of Microbial Profiles\n(p-value ",adonis[[1]][6][[1]][1],")",sep="")
+  sub = paste("metaNMDS plot of Microbial Profiles\nPERMDISP     p=",permdisp[["tab"]][["Pr(>F)"]][1],"\n",
+              "PERMANOVA  p=",adonis[1,5],sep="")
   )} else {s.class(
     meta$points, col = unique(plot_color), cpoint = 2, fac = all_groups_comp  )}
 if (label_samples==1){
@@ -558,6 +562,7 @@ if (dim(table(unique_groups)) > 2) {
   
   # Initialise vector and lists
   pVal = NULL
+  permdisppval=NULL
   pairedMatrixList <- list(NULL)
   pair_1_list <- NULL
   pair_2_list <- NULL
@@ -610,14 +615,18 @@ if (dim(table(unique_groups)) > 2) {
     # Applies multivariate analysis to a pair out of the selected groups
     adonis <- adonis2(paired_matrix ~ all_groups_comp[all_groups_comp == pair_1 |
                                                        all_groups_comp == pair_2])
+    permdisp <- permutest(betadisper(as.dist(paired_matrix),as.factor(all_groups_comp[all_groups_comp == pair_1 |
+                                                                                        all_groups_comp == pair_2]),type="median"),pairwise = T)
     
     # List p-values
-    pVal[i] <- adonis[[1]][6][[1]][1]
+    pVal[i] <- adonis[1,5]
+    permdisppval[i] <- permdisp$pairwise[2]
     
   }
   
   # Adjust p-values for multiple testing according to Benjamini-Hochberg method
-  pVal_BH <- p.adjust(pVal,method="BH", n=length(pVal))
+  pVal_BH <- round(p.adjust(pVal,method="BH", n=length(pVal)),4)
+  permdisppval_BH <- round(p.adjust(permdisppval,method="BH", n=length(permdisppval)),4)
   
   # Generated NMDS plots are stored in one pdf file called "pairwise-beta-diversity-nMDS.pdf"
   file_name <-paste("pairwise-beta-diversity-NMDS","(",paste(groups_name,collapse="-"),").pdf",sep="")
@@ -630,8 +639,8 @@ if (dim(table(unique_groups)) > 2) {
       col = rainbow(length(levels(all_groups_comp))), cpoint = 2,
       fac = as.factor(all_groups_comp[all_groups_comp == pair_1_list[i] |
                                         all_groups_comp == pair_2_list[i]]),
-      sub = paste("NMDS plot of Microbial Profiles\n ",pair_1_list[i]," - ",pair_2_list[i], "\n(p-value ",pVal[i],","," corr. p-value ", pVal_BH[i],")",sep="")
-    )
+      sub = paste("NMDS plot of Microbial Profiles\n ",pair_1_list[i]," - ",pair_2_list[i], "\n PERMDISP     p=",permdisppval[[i]],",","  p.adj=", permdisppval_BH[i],"\n",
+                  " PERMANOVA  p=",pVal[i],","," p.adj=",pVal_BH[i],sep="")    )
   }
   dev.off()
   
@@ -644,8 +653,9 @@ if (dim(table(unique_groups)) > 2) {
     s.class(
       cmdscale(pairedMatrixList[[i]], k = 2), col = rainbow(length(levels(all_groups_comp))), cpoint =
         2, fac = as.factor(all_groups_comp[all_groups_comp == pair_1_list[i] |
-                                             all_groups_comp == pair_2_list[i]]), sub = paste("MDS plot of Microbial Profiles\n ",pair_1_list[i]," - ",pair_2_list[i], "\n(p-value ",pVal[i],","," corr. p-value ", pVal_BH[i],")",sep="")
-    )
+                                             all_groups_comp == pair_2_list[i]]), 
+      sub = paste("MDS plot of Microbial Profiles\n ",pair_1_list[i]," - ",pair_2_list[i], "\n PERMDISP     p=",permdisppval[[i]],",","  p.adj=", permdisppval_BH[i],"\n",
+                  " PERMANOVA  p=",pVal[i],","," p.adj=",pVal_BH[i],sep="")    )
   }
   dev.off()                                     
   
@@ -815,8 +825,8 @@ if (i==1){
   
   # Calculate the PERMANOVA p-values
   for (g in 1:nrow(combs)){ groups <- data_cluster[data_cluster %in% combs[g,]]
-  adonis <- adonis(unifract_dist[names(groups),names(groups)]~groups)[[1]][6][[1]][1]
-  pvalues <- rbind(pvalues,c(paste0(combs[g,1],"-",combs[g,2]),adonis))}
+  adonis <- adonis2(unifract_dist[names(groups),names(groups)]~groups)
+  pvalues <- rbind(pvalues,c(paste0(combs[g,1],"-",combs[g,2]),adonis[1,5]))}
   colnames(pvalues) <- c("Groups","p-value")
   
   
