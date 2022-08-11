@@ -87,7 +87,7 @@ input_tree_or_matrix = "OTUs-NJTree.tre"
 
 
 #' Please give the name of the mapping file which contains the labels of the samples (Accepted Formats: txt, tab, csv, tsv)
-#' !! CAUTION: The rows of the mapping file should have the same sample names as the OTUs table !!
+#' !! CAUTION: The rows of the first column of mapping file should have the same sample names as the OTUs table !!
 input_meta = "mapping_file.tab"
 
 
@@ -1011,8 +1011,11 @@ if (ncol(taxonomy)!=0) {
     stop("The mapping file and the OTUs table does not have same rows names")
     if (any(reference_name%in%Test_name))
       stop("You have entered the same names as reference and test groups.\n Each group can be either reference or test not  both!")
-    if (all(c(Test_name,reference_name)%in%levels(factor(meta_file[,mapping_column]))) == FALSE)
-      stop("The names of the Reference and Test groups does not exist in the mapping file!")
+    if (if (all(Test_name == "None")) {all(c(reference_name)%in%levels(factor(meta_file[,mapping_column]))) == FALSE
+    } else {
+      all(c(Test_name,reference_name)%in%levels(factor(meta_file[,mapping_column]))) == FALSE
+    })
+      stop("The names of the Reference and/or Test groups does not exist in the mapping file!")
     if (reference_clusters == 0)
       stop("The number of reference clusters should be more than 1")
     
@@ -1324,7 +1327,7 @@ if (ncol(taxonomy)!=0) {
         col_names <- c(col_names,paste0(central_point,"_",ref,"(Ref)"))
       }
       
-      if (length(Test_name)>0){
+      if (length(Test_name)>0 & any(Test_name != "None")){
         if (all(Test_name!="") & all(Test_name!=" ")){
           for(test in 1:length(Test_name)){
             col_names <- c(col_names,paste0(central_point,"(",Test_name[test],")"))
