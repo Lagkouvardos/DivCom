@@ -1,6 +1,6 @@
 
 #'Script Title: DivCom 
-#'This script was last modified on 04/07/2022
+#'This script was last modified on 10/11/2022
 #'Authors: Evangelia Intze, Ilias Lagkouvardos
 #'
 #'
@@ -16,17 +16,17 @@
 #' Input: 
 #' Please enter the following parameters
 #' 1. Set the path to the directory where the file is stored 
-#' 2. Write the name of the OTU table of interest in quotes
-#' 3. Write if the OTUs table is normalized or not
-#' 4. Write the name of the mapping file that includes the samples groups
-#' 5. Write if you will provide distance matrix or phylogenetic tree
+#' 2. Write the name of the OTUs/ASVs table 
+#' 3. Write whether the OTUs table is normalized or not
+#' 4. Write the name of the mapping file that contains the samples groups
+#' 5. Write if you will provide the distances matrix or the phylogenetic tree
 #' 6. Write the name of the OTU tree or the phylogenetic tree
-#' 7. Write the name of the mapping file of the variable (sample group) used for comparison
-#' 8. Write the name of groups that will be used for as reference groups
+#' 7. Write the name of the mapping file
+#' 8. Write the name of groups that will be used as the reference group
 #' 9. Write the desired number of clusters for the reference group
-#' 9. Write the name of groups that will be used for as reference groups
+#' 9. Write the name of groups that will be used as the test groups
 #'10. Write the desired number of clusters for the test groups
-#'11  Write the names of the columns used for chi-square comparisons
+#'11  Write the names of the columns that will be used for the chi-square comparisons
 #'12. Write if the central point of each cluster will be the medoid, the median or mean point
 #'13. Write the preferred type of plot 
 #' 
@@ -35,10 +35,11 @@
 #' The script generates two reports in pdf format, 3 folder where the results are printed and a mapping file
 #' 1. A Distances Based Analysis report
 #' 2. A De Novo Analysis report
-#' 3. A folder with the p-values tables for the different tests 
-#' 4. A folder with the plots presenting in the reports
+#' 3. A folder with the p-values for the statistical tests 
+#' 4. A folder with the plots as they are presented in the reports
 #' 5. A folder with various tables containing information about the distances 
 #' 6. The mapping file with an extra column 
+#' 7. The distances matrix
 #' 
 #'
 #' Concept:
@@ -81,8 +82,8 @@ normalized = "NO"
 tree_or_matrix =  "tree" 
 
 
-#' Please insert the name of the distances matrix or the anme of the phylogenetic tree (Accepted Formats: tre or nwk)
-#' -> -> !!! In case you will choose the "mean" or "median" option you HAVE TO provide a phylogenetic tree !!! <- <-
+#' Please insert the name of the distances matrix or the name of the phylogenetic tree (Accepted Formats: tre or nwk)
+#' -> -> !!! In case you will choose (in the following steps) the "mean" or "median" option you HAVE TO provide a phylogenetic tree !!! <- <-
 input_tree_or_matrix = "OTUs-NJTree.tre"  
 
 
@@ -91,7 +92,7 @@ input_tree_or_matrix = "OTUs-NJTree.tre"
 input_meta = "mapping_file.tab"
 
 
-#' Please provide the name or the number of the column (of the mapping file) based on which the samples will be partitioned into groups
+#' Please provide the name or the number of the column (of the mapping file) based on which the samples will be clustered into groups
 mapping_column = "Condition"
 
 
@@ -575,8 +576,7 @@ sclass <- function(distance,groups,individuals=NULL,col) {
     s.class(
       mds$points[1:length(groups),], col = col, cpoint =
         1.5, grid = T,fac = all_groups_comp[1:length(groups)],xlim = c(1.4*min(mds[["points"]][,1]),1.2*max(mds[["points"]][,1])),ylim = c(1.2*min(mds[["points"]][,2]),1.5*max(mds[["points"]][,2])))
-    points(mds$points[(length(groups)+1):(length(groups)+length(individuals)),1],mds$points[(length(groups)+1):(length(groups)+length(individuals)),2],pch = 19,col=c(rep(brewer.pal(n = 8, name = "Set2")[1],reference_clusters),
-                                                                                                                                                                      colour_matrix[levels(factor(individuals,levels = unique(individuals))),2]),cex=0.70)
+    points(mds$points[(length(groups)+1):(length(groups)+length(individuals)),1],mds$points[(length(groups)+1):(length(groups)+length(individuals)),2],pch = 19,col=c(colour_matrix[levels(factor(individuals,levels = unique(individuals))),2]),cex=0.70)
     graphics:: title (main=paste0(" " ), xlab = paste("MDS1:",mds.variation[1],"%"), ylab=paste("MDS2:",mds.variation[2],"%"))
     legend(1.3*min(mds[["points"]][,1]),1.1*max(mds[["points"]][,2]),c(levels(as.factor(groups)),levels(as.factor(individuals))),
            fill=c(rep(brewer.pal(n = 8, name = "Set2")[1],reference_clusters),
@@ -5288,6 +5288,9 @@ if (ncol(taxonomy)!=0) {
       
       # Write the new mapping file with the added column
       write.table(mapping_file, "mapping file.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)  
+      
+      # Write the distances matrix
+      write.table(unifract_dist, "distance-matrix-gunif.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE) 
       
       # Write the Description Analysis file
       write.table(description_analysis, "Description Analysis.tab", sep = "\t",col.names =F, row.names = TRUE,quote = FALSE) 
