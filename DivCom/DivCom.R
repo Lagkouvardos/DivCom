@@ -576,7 +576,7 @@ sclass <- function(distance,groups,individuals=NULL,col) {
     s.class(
       mds$points[1:length(groups),], col = col, cpoint =
         1.5, grid = T,fac = all_groups_comp[1:length(groups)],xlim = c(1.4*min(mds[["points"]][,1]),1.2*max(mds[["points"]][,1])),ylim = c(1.2*min(mds[["points"]][,2]),1.5*max(mds[["points"]][,2])))
-    points(mds$points[(length(groups)+1):(length(groups)+length(individuals)),1],mds$points[(length(groups)+1):(length(groups)+length(individuals)),2],pch = 19,col=c(colour_matrix[levels(factor(individuals,levels = unique(individuals))),2]),cex=0.70)
+    points(mds$points[(length(groups)+1):(length(groups)+length(individuals)),1],mds$points[(length(groups)+1):(length(groups)+length(individuals)),2],pch = 19,col=sapply(individuals,function(x) c(colour_matrix[levels(factor(x,levels = unique(x))),2])),cex=0.70)
     graphics:: title (main=paste0(" " ), xlab = paste("MDS1:",mds.variation[1],"%"), ylab=paste("MDS2:",mds.variation[2],"%"))
     legend(1.3*min(mds[["points"]][,1]),1.1*max(mds[["points"]][,2]),c(levels(as.factor(groups)),levels(as.factor(individuals))),
            fill=c(rep(brewer.pal(n = 8, name = "Set2")[1],reference_clusters),
