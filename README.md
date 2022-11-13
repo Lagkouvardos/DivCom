@@ -35,6 +35,10 @@ In order to use DivCom, the following steps should be followed:
 *	Then decompress the files into the desired destination. 
 *	For a smoother experience and reduced waiting times, we recommend running the install_packages.R script first. This script will automatically install all the packages required by DivCom scripts. Packages that, for any reason, cannot be installed automatically will be identified and noted in the corresponding report.
 
+Note for Linux users: In case you experiencing problems installing the 'ggpubr' package first run the following line and then proceed to the scripts. 
+
+	install.packages("https://cran.r-project.org/src/contrib/Archive/nloptr/nloptr_1.2.1.tar.gz", repos=NULL, type="source")
+
 ### Input Files
 The user has to provide three mandatory files
 
