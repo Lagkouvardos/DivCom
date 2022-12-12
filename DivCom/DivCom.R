@@ -553,7 +553,7 @@ sclass <- function(distance,groups,individuals=NULL,col) {
     # Create Subtitle
     sub = paste("MDS plot of Microbial Profiles\nPERMDISP     p=",permdisp[["tab"]][["Pr(>F)"]][1],"\n",
                 "PERMANOVA  p=",adonis[1,5],sep="")
-    } else {
+  } else {
     sub <- c("")
   }
   # Find the factors of all_groups_comp vector
@@ -693,7 +693,11 @@ optimal_k<- function(unifract_dist){
         # Choose the optimal number of clusters
         k <- which.max(ch_adj)+2+i
         i <- i+1
-        continue <- 1
+        if (which.max(ch_adj)+2+i<max_cl){
+          continue <- 1
+        } else {
+          continue <- 0
+        }
       } else  {
         # Choose the optimal number of clusters
         k <-  which.max(ch_adj)+1+i
@@ -1252,6 +1256,10 @@ if (ncol(taxonomy)!=0) {
       # Create the directory where all output files will be saved 
       outputs_folder <- paste0(mapping_column,"-",paste(reference_name,collapse="+"),"-",reference_clusters," (",paste(Test_name,collapse="+"),")")
       outputs_path   <- paste0(OriginalPath,"/",outputs_folder)
+      if (nchar(outputs_path)+nchar(paste0("P-values","-",paste(reference_name,collapse="+"),"-",reference_clusters))>230){
+        outputs_folder <- paste("DivCom",Sys.Date())
+        outputs_path   <- paste0(OriginalPath,"/",outputs_folder)
+      }
       dir.create(outputs_folder)
       
       # Path and Directory where the results will be stored
@@ -5287,7 +5295,7 @@ if (ncol(taxonomy)!=0) {
       setwd(outputs_path)
       
       # Write the new mapping file with the added column
-      write.table(mapping_file, "mapping file.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)  
+      write.table(mapping_file, "mapping file.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE)
       
       # Write the distances matrix
       write.table(unifract_dist, "distance-matrix-gunif.tab", sep = "\t",col.names =NA, row.names = TRUE,quote = FALSE) 
