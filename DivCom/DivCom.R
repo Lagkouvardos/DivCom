@@ -1103,7 +1103,7 @@ if (ncol(taxonomy)!=0) {
           cluster_centroid <- c()
           for (i in 1:reference_clusters) { 
             # Create a matrix that includes only the sample of each cluster will be stored
-            cl<-otu_file[pam$clustering==i,]
+            cl<-otu_file[which(pam$clustering==i),]
             if (central_point=="median"){
               # Calculate the new centroids 
               cluster_centroid <-  rbind(cluster_centroid,apply(cl,2,median))
