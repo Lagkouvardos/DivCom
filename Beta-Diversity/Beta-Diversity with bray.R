@@ -52,15 +52,15 @@
 
 #' Please set the directory of the script as the working folder (e.g D:/studyname/NGS-Data/Rhea/beta-diversity/)
 #' Note: the path is denoted by forward slash "/"
-setwd("D:/path/to/Beta-Diversity/")     #<--- CHANGE ACCORDINGLY !!!
+#setwd("D:/path/to/DivCom/")     #<--- CHANGE ACCORDINGLY !!!
 
 #' Please give the name of the OTUs or ASVs table
-input_otu = "OTUs-Table.tab"              #<--- CHANGE ACCORDINGLY !!!
+input_otu = "SOTUs2.tab"              #<--- CHANGE ACCORDINGLY !!!
 
 
 #' Please insert "YES" if the OTUs/ASVs table is normalized otherwise, insert "NO"
 #' In case the table is not normalized, the OTUs/ASVs table will be normalized based on the minimum sum of reads of the samples.
-normalized = "NO"
+normalized = "YES"
 
 #' Choose if you will insert a distances matrix or the phylogenetic tree of the OTUs/ASVs sequences
 #' There are two options: "distances matrix" or "tree"
@@ -70,28 +70,30 @@ tree_or_matrix = "tree"
 
 
 #' Please insert the name of the distances matrix or the anme of the phylogenetic tree 
-input_tree_or_matrix = "OTUs-NJTree.tre" 
+input_tree_or_matrix = "SOTUs-NJTree.tre" 
 
 
 #' Please give the name of the mapping file which contains the labels of the samples
 #' !! CAUTION: The rows of the mapping file should have the same sample names as the OTUs table !!
-input_meta = "mapping_file.tab"              #<--- CHANGE ACCORDINGLY !!!
+input_meta = "only_Bulgaria.txt"              #<--- CHANGE ACCORDINGLY !!!
 
 
 #' Please provide the name or the number of the column (of the mapping file) based on which the samples will be partitioned into groups
-mapping_column = "Condition"                    #<--- CHANGE ACCORDINGLY !!!
+mapping_column = "new_weaning2"                    #<--- CHANGE ACCORDINGLY !!!
 
 #' Please place in the vector one or more names which will be used to identify the samples that composing 
 #'         the REFERENCE group (e.g reference_name <- c("group_a","group_b"))
 #' -> -> !!! CAUTION: You should provide at least one name!!! <- <-
-Reference_name = c("NI")
+Reference_name = c("1W_V3")
 
 #' Please provide the names of the test groups 
 #' There are two options: a User-defined vector or "None"
 #' 1) User-defined vector --> Form a vector with one or more elements referring to the name of the test groups (e.g test_name <- c("group_a","group_b"))
 #' 2)     c()             --> In case you insert an empty vector,there won't be any test group. 
 #'                            Only the indexes of the reference samples will be calculated (Not recommended)
-Test_name =c("IBD")
+Test_name =c("2W_V3","3W_V3","4W_V3","2M_V3","3M_V3","4M_V3","12M_V3")
+
+metric= "Unifrac"
 
 
 #-------------------- Additional parameters ----------------------#
@@ -115,6 +117,7 @@ label_id =c("")
 #' De-Novo Clustering will be performed for the number of samples or maximal for the set limit
 #' Default Limit is 9
 kmers_limit=9
+
 
 
 #################################################################################################################################################################
@@ -397,23 +400,24 @@ if (ncol(taxonomy)!=0) {
 ############               Calculate beta-diversity               ############
 ##############################################################################
   
-  if (tree_or_matrix=="tree"){ 
+ 
+   if (tree_or_matrix=="tree" & metric =="Bray"){ 
     
-    #---------------- Tree -----------------------#
-    # Load the phylogenetic tree calculated from the OTU sequences 
-    tree_file <- read.tree(input_tree_or_matrix)
-    
-    # Remove single quotes from the tips of the tree
-    tree_file$tip.label <- gsub("'", "", tree_file$tip.label)
-    
-    # Root the OTU tree at midpoint 
-    rooted_tree <- midpoint(tree_file)
+    # #---------------- Tree -----------------------#
+    # # Load the phylogenetic tree calculated from the OTU sequences 
+    # tree_file <- read.tree(input_tree_or_matrix)
+    # 
+    # # Remove single quotes from the tips of the tree
+    # tree_file$tip.label <- gsub("'", "", tree_file$tip.label)
+    # 
+    # # Root the OTU tree at midpoint 
+    # rooted_tree <- midpoint(tree_file)
     #--------------------------------------------#
     
     # Calculate the UniFrac distance matrix for comparing microbial communities
-    unifracs <- GUniFrac(otu_file, rooted_tree, alpha = c(0.0,0.5,1.0))$unifracs
-    # Weight on abundant lineages so the distance is not dominated by highly abundant lineages with 0.5 having the best power
-    unifract_dist_all <- unifracs[, , "d_0.5"]
+     unifract_dist_all <- as.matrix(vegdist(otu_file))
+    # # Weight on abundant lineages so the distance is not dominated by highly abundant lineages with 0.5 having the best power
+    # unifract_dist_all <- unifracs[, , "d_0.5"]
   } else {
     # Read the distances matrix
     unifract_dist_all <- read.table (input_tree_or_matrix,check.names = FALSE,header = TRUE,dec = ".",sep = "\t", row.names = 1,comment.char = "")
