@@ -1674,7 +1674,7 @@ if (ncol(taxonomy)!=0) {
       max <- as.numeric(max(minimum_reference_distance[meta_file[,mapping_column] %in% reference_name],na.rm = TRUE))
       
       # Test whether the distances of Reference Sample from reference medoid are normally distributed 
-      shapino <- shapiro.test(as.numeric(minimum_reference_distance[meta_file[,mapping_column] %in% reference_name]))[["p.value"]]
+      shapino <- tryCatch (shapiro.test(as.numeric(minimum_reference_distance[meta_file[,mapping_column] %in% reference_name]))[["p.value"]], error = function(i) {shapino <- 0.05})                                       
       # if the distances are normally distributed then calculate standard deviation 
       if (shapino > 0.05) {
         sd <- sd(as.numeric(minimum_reference_distance[meta_file[,mapping_column] %in% reference_name]),na.rm = TRUE)
